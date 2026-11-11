@@ -42,7 +42,8 @@ const HIST=[
 const ALL={persons:{},places:{},sources:{},views:{}};
 const S={persons:{},places:ALL.places,sources:ALL.sources,views:ALL.views};
 const KIND={person:'persons',place:'places',source:'sources',view:'views'};
-const ui={view:'trad',focus:null,sel:null,ancGen:3,descGen:2,plFilter:'alla',plSort:'namn',plQuery:'',
+const APP_VERSION='2026-11-11.6';
+const ui={nameMode:(()=>{try{return localStorage.getItem('sa-names')||'full';}catch(e){return 'full';}})(),simple:false,view:'trad',focus:null,sel:null,ancGen:3,descGen:2,plFilter:'alla',plSort:'namn',plQuery:'',
   tlScope:'alla',tlHist:true,mapScope:'alla',mapRoute:true,placing:null,treeKey:null,viewId:null};
 try{const f=localStorage.getItem('sa-focus'); if(f) ui.focus=f; const v=localStorage.getItem('sa-viewid'); if(v) ui.viewId=v;}catch(e){}
 let HIDDEN=new Set();
@@ -57,7 +58,7 @@ function viewCounts(v){return computeHidden(v).size;}
 
 /* ============ Store ============ */
 const Store={
-  mode:'loading',col:null,canEdit:true,isAdmin:true,myId:null,user:null,assets:null,downloads:null,chains:{},loaded:false,
+  mode:'loading',col:null,demo:null,canEdit:true,isAdmin:true,myId:null,user:null,assets:null,downloads:null,chains:{},loaded:false,
   async init(){
     let db=null,user=null;
     if(window.claude && typeof window.claude.use==='function'){
@@ -73,7 +74,7 @@ const Store={
       } else this.isAdmin=false;
       this.subscribe();
     }else{
-      this.mode='local'; this.loadLocal(); this.loaded=true; applyView();
+      this.mode='local'; this.loadLocal(); this.loaded=true; purgeLegacyDemo(); applyView();
       setStatus('warn','Sparas bara i den här webbläsaren');
       renderAll();
     }
@@ -83,15 +84,18 @@ const Store={
     let timer=setTimeout(()=>setStatus('warn','Databasen svarar inte ännu'),10000);
     this.col.onSnapshot(snap=>{
       if(!snap.metadata.fromCache){clearTimeout(timer); setStatus('ok',this.canEdit?'Delas & sparas i molnet':'Endast läsning');}
-      ALL.persons={};ALL.places={};ALL.sources={};ALL.views={};
-      for(const d of snap.docs){const o=d.data(); if(o&&KIND[o.kind]) ALL[KIND[o.kind]][d.id]=o;}
-      this.loaded=true; applyView(); renderAll();
+      const T=this.demo?this.demo.saved:ALL;
+      T.persons={};T.places={};T.sources={};T.views={};
+      for(const d of snap.docs){const o=d.data(); if(o&&KIND[o.kind]) T[KIND[o.kind]][d.id]=o;}
+      if(this.demo) return;
+      this.loaded=true; if(!this._purged){this._purged=true; purgeLegacyDemo();} applyView(); renderAll();
     },err=>{clearTimeout(timer); setStatus('err','Kunde inte läsa data ('+err.code+')'); this.loaded=true; renderAll();});
   },
   loadLocal(){
     try{const raw=localStorage.getItem('kinsaga-v1')||localStorage.getItem('slaktarkivet-v1'); if(raw){const o=JSON.parse(raw); ALL.persons=o.persons||{}; ALL.places=o.places||{}; ALL.sources=o.sources||{}; ALL.views=o.views||{};}}catch(e){}
   },
   saveLocal(){
+    if(this.demo) return;
     clearTimeout(this._lt);
     this._lt=setTimeout(()=>{try{localStorage.setItem('kinsaga-v1',JSON.stringify(ALL));}catch(e){toast('Webbläsarens lagring är full – ta bort några bilder eller exportera en säkerhetskopia.',6000);}},250);
   },
@@ -113,6 +117,7 @@ const Store={
     obj=this.stamp(clone(obj));
     ALL[KIND[obj.kind]][obj.id]=obj; applyView();
     if(!silent) renderAll();
+    if(this.demo) return Promise.resolve();
     if(this.mode==='db'){
       return this.write(obj.id,()=>this.retry(()=>this.col.doc(obj.id).set(obj))).catch(e=>{
         if(e&&e.code==='quota_exceeded') toast('Databasen är full – ta bort något först.');
@@ -124,12 +129,14 @@ const Store={
   del(kind,id,{silent}={}){
     delete ALL[KIND[kind]][id]; applyView();
     if(!silent) renderAll();
+    if(this.demo) return Promise.resolve();
     if(this.mode==='db') return this.write(id,()=>this.retry(()=>this.col.doc(id).delete())).catch(e=>toast('Kunde inte ta bort: '+(e&&e.code||e)));
     this.saveLocal(); return Promise.resolve();
   },
   async putMany(objs,onProgress){
     let done=0; const queue=objs.slice();
     for(const o of queue){this.stamp(o); ALL[KIND[o.kind]][o.id]=clone(o);} applyView();
+    if(this.demo){onProgress&&onProgress(1); renderAll(); return;}
     if(this.mode!=='db'){this.saveLocal(); onProgress&&onProgress(1); renderAll(); return;}
     renderAll();
     const worker=async()=>{while(queue.length){const o=queue.shift(); await this.write(o.id,()=>this.retry(()=>this.col.doc(o.id).set(clone(o)))).catch(e=>{console.warn(e)}); done++; onProgress&&onProgress(done/objs.length);}};
@@ -140,7 +147,14 @@ function setStatus(cls,txt){const s=$('#status'); s.className='status '+cls; con
 
 /* ============ Domain helpers ============ */
 const P=id=>S.persons[id];
-const fullName=p=>p?([p.given,p.surname].filter(Boolean).join(' ')||'Namnlös'):'Okänd';
+/* Call name (tilltalsnamn): p.callName is normally one of the given names. */
+const givenName=p=>ui.nameMode==='call'&&p.callName?p.callName:(p.given||'');
+const shortName=p=>p?(p.callName||p.given||fullName(p)):'Okänd';
+const fullName=p=>p?([givenName(p),p.surname].filter(Boolean).join(' ')||'Namnlös'):'Okänd';
+/** Given names with the call name underlined, Swedish style. */
+const givenHtml=p=>{const g=p.given||''; if(!p.callName) return esc(g); const ws=g.split(/\s+/); const i=ws.findIndex(w=>w.replace(/[()]/g,'')===p.callName);
+  return i<0?esc(g)+` <span class="muted">(${esc(p.callName)})</span>`:ws.map((w,j)=>j===i?`<u class="tn" title="Tilltalsnamn">${esc(w)}</u>`:esc(w)).join(' ');};
+const fullHtml=p=>[givenHtml(p),esc(p.surname||'')].filter(Boolean).join(' ')||'Namnlös';
 const initials=p=>{const w=[p.given,p.surname].filter(Boolean).join(' ').split(/\s+/).filter(x=>/^[A-ZÅÄÖÉŁ]/i.test(x)&&!/^(av|von|de)$/i.test(x)); return ((w[0]||'?')[0]+(w.length>1&&!/^[IVX]+$/.test(w[1])?w[1][0]:'')).toUpperCase();};
 function lifespan(p){const b=yearOf(p.birthDate),d=yearOf(p.deathDate); if(!b&&!d) return ''; return (b||'?')+' – '+(d||(b&&NOW_Y-b<105?'':'?'));}
 const sexColor=p=>p&&p.sex==='M'?'var(--male)':p&&p.sex==='K'?'var(--female)':'var(--unk)';
@@ -152,7 +166,7 @@ const isImg=m=>/^image\//.test(m&&m.contentType||'');
 function avatarUrl(p){const imgs=(p.media||[]).filter(isImg); const m=imgs.find(m=>m.profile)||imgs[0]; return m?m.url:null;}
 const homePerson=()=>Object.values(S.persons).find(p=>p.home);
 function goHome(){const h=homePerson(); if(h) setFocus(h.id); else {const first=Object.values(S.persons).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))[0]; if(first) setFocus(first.id);} ui.sel=null; ui.treeKey=null; ui.plQuery=''; if(location.hash!=='#trad') location.hash='trad'; else renderAll(true); window.scrollTo(0,0);}
-async function setHome(id){for(const p of Object.values(ALL.persons)) if(p.home&&p.id!==id){const q=clone(p); delete q.home; await Store.put(q,{silent:true});} const q=clone(P(id)); q.home=true; await Store.put(q); toast('⌂ '+fullName(q)+' är nu startperson – loggan tar dig hit.');}
+async function setHome(id){for(const p of Object.values(ALL.persons)) if(p.home&&p.id!==id){const q=clone(p); delete q.home; await Store.put(q,{silent:true});} const q=clone(P(id)); q.home=true; await Store.put(q); toast('★ '+fullName(q)+' är markerad som ”jag”. Startsidan och släktskap utgår nu härifrån.',4500);}
 function ancestorsOf(id,max=50){const out=new Set();const walk=(i,d)=>{const p=P(i);if(!p||d>max)return;for(const k of ['fatherId','motherId']){if(p[k]&&!out.has(p[k])){out.add(p[k]);walk(p[k],d+1);}}};walk(id,0);return out;}
 function descendantsOf(id){const out=new Set();const walk=i=>{for(const c of children(i)){if(!out.has(c.id)){out.add(c.id);walk(c.id);}}};walk(id);return out;}
 function scopeSet(scope){
@@ -181,11 +195,12 @@ function personLabel(p){const ls=lifespan(p); return fullName(p)+(ls?' ('+ls.rep
 /* ============ Router ============ */
 const VIEWS={start:renderStart,trad:renderTree,solfjader:renderFan,personer:renderPersons,slaktskap:renderRel,personkort:renderCard,dubbletter:renderDups,tidslinje:renderTimeline,karta:renderMap,kallor:renderSources,import:renderImport};
 const NAVMAP={personkort:'personer',dubbletter:'personer'};
-function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
+function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} if(h==='exempel'){ui.pendingDemo=true; location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
 window.addEventListener('hashchange',route);
 let lastView=null;
 function renderAll(force){
   if(!Store.loaded){ $('#view').innerHTML='<div class="empty"><p class="muted">Laddar släktarkivet…</p></div>'; return; }
+  if(ui.pendingDemo){ui.pendingDemo=false; loadDemo(); return;}
   if(ui.pendingView){const pv=Object.values(ALL.views).find(x=>x.slug===ui.pendingView); ui.pendingView=null; if(pv){ui.viewId=pv.id; try{localStorage.setItem('sa-viewid',pv.id);}catch(e){} applyView(); ui.treeKey=null; setTimeout(()=>toast('Visar vyn '+pv.name),300);}}
   if(ui.viewId&&!ALL.views[ui.viewId]){ui.viewId=null; applyView();}
   if(ui.focus&&!P(ui.focus)) ui.focus=null;
@@ -195,11 +210,20 @@ function renderAll(force){
   if(ui.sel&&ui.sel.type==='place'&&!S.places[ui.sel.id]) ui.sel=null;
   if(ui.sel&&ui.sel.type==='source'&&!S.sources[ui.sel.id]) ui.sel=null;
   renderPanel(); updateDemoBar(); updateViewBtn();
-  VIEWS[ui.view](force||lastView!==ui.view); lastView=ui.view;
+  try{ VIEWS[ui.view](force||lastView!==ui.view); lastView=ui.view; }
+  catch(e){ console.error(e); lastView=null;
+    $('#view').innerHTML=`<div class="empty"><h2>Något gick fel på den här sidan</h2><p>Dina uppgifter är orörda. Prova att ladda om sidan. Om felet kommer tillbaka: skicka texten här nedanför till den som sköter sidan.</p><p class="muted small" style="font-family:monospace">${esc(APP_VERSION)} · ${esc(ui.view)} · ${esc(String(e&&e.message||e))}</p><p><button class="btn primary" onclick="location.reload()">Ladda om</button></p></div>`; }
 }
 function setFocus(id){ui.focus=id; try{localStorage.setItem('sa-focus',id)}catch(e){} }
 function select(type,id){ui.sel=id?{type,id}:null; renderAll();}
 function showPerson(id,{focus}={}){if(focus) setFocus(id); select('person',id);}
+/* Clicking a name in the side panel moves the current view to that person. */
+function followPerson(id){
+  if(ui.view==='trad'||ui.view==='solfjader'){setFocus(id); ui.treeKey=null;}
+  if(ui.view==='personkort') setFocus(id);
+  if(ui.view==='slaktskap'){ui.relB=id; const h=homePerson(); if(!ui.relA||ui.relA===id) ui.relA=h&&h.id!==id?h.id:null;}
+  select('person',id);
+}
 
 /* ============ Empty state ============ */
 function emptyState(){
@@ -207,25 +231,27 @@ function emptyState(){
   return `<div class="empty">
     <svg width="64" height="64" viewBox="0 0 26 26" fill="none" stroke="var(--accent)" stroke-width="1.2"><path d="M13 24V13M13 13c0-4 -3-6-6-6M13 13c0-4 3-6 6-6M13 17c-2-1-5-1-7 1M13 17c2-1 5-1 7 1"/><circle cx="7" cy="6" r="2.4"/><circle cx="19" cy="6" r="2.4"/><circle cx="13" cy="3.6" r="2"/></svg>
     <h2>Börja ditt släktarkiv</h2>
-    <p>Lägg till dig själv eller den äldsta ana du känner till, eller läs in din befintliga släktlista från Excel. Du kan också titta runt i Vasaätten som exempel först – från Gustav Vasa till drottning Kristina.</p>
+    <p>Lägg till dig själv eller den äldsta ana du känner till, eller läs in din släktlista från Excel. Du kan också titta på ett exempel först.</p>
     <div class="acts">
       ${Store.canEdit?`<button class="btn primary" onclick="openPersonModal()">+ Lägg till första personen</button>
       <a class="btn" href="#import">Importera från Excel</a>
-      ${Store.isAdmin?'<button class="btn" onclick="loadDemo()">Visa Vasaätten som exempel</button>':''}`:'<p class="muted">Arkivet är tomt.</p>'}
+      <button class="btn" onclick="loadDemo()">Titta på ett exempel</button>`:'<p class="muted">Arkivet är tomt.</p>'}
     </div></div>`;
 }
 
 /* ============ TREE ============ */
-const CW=196,CH=68;
+const CW=224,CH=100; // card size; the left part holds a 3:4 portrait (PW×PH)
+const PX=12,PY=10,PW=60,PH=80;
 let treeZoom=null;
 function renderTree(fresh){
   const v=$('#view');
   if(!Object.keys(S.persons).length){v.innerHTML=emptyState();ui.treeKey=null;return;}
   const F=P(ui.focus);
   if(!$('#treeSvg')||fresh){
-    v.innerHTML=`<div id="treeWrap"><svg id="treeSvg"><defs><clipPath id="avclip"><circle cx="28" cy="34" r="20"/></clipPath></defs><g class="vp"></g></svg>
+    v.innerHTML=`<div id="treeWrap"><svg id="treeSvg"><defs><clipPath id="avclip"><rect x="12" y="10" width="60" height="80" rx="6"/></clipPath></defs><g class="vp"></g></svg>
       <div class="tree-tools">
         <span class="fname" id="tfName"></span>
+        <span id="tTrees" class="ctl"></span>
         <span class="ctl">Anor <select id="tAnc">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${n===ui.ancGen?'selected':''}>${n}</option>`).join('')}</select></span>
         <span class="ctl">Ättlingar <select id="tDesc">${[0,1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${n===ui.descGen?'selected':''}>${n}</option>`).join('')}</select></span>
         <button class="btn sm" id="tFit">Centrera</button>
@@ -243,6 +269,10 @@ function renderTree(fresh){
     ui.treeKey=null;
   }
   $('#tfName').textContent=fullName(F);
+  {const ts=trees(), cur=treeOf(F.id); const opts=ts.filter(t=>t.size>1||t===cur);
+   $('#tTrees').innerHTML=ts.length>1?`<select id="tTreeSel" title="Byt släktträd">${opts.map(t=>`<option value="${t.root.id}" ${t===cur?'selected':''}>${esc(t.name)} (${t.size})</option>`).join('')}</select>${Store.canEdit?'<button class="btn sm" id="tLink">🔗 Koppla ihop</button>':''}`:'';
+   const sel=$('#tTreeSel'); if(sel) sel.onchange=()=>{setFocus(sel.value); ui.treeKey=null; renderAll(true);};
+   const lk=$('#tLink'); if(lk) lk.onclick=()=>linkModal(ui.focus);}
   const av0=activeView(); $('#tView').innerHTML=av0?`<span class="vchip">Vy: <b>${esc(av0.name)}</b> · ${HIDDEN.size} dolda <button class="btn sm ghost" onclick="setActiveView(null)">Visa alla</button></span>`:'';
   const svg=d3.select('#treeSvg'), g=svg.select('g.vp');
   const nodes=[],links=[];
@@ -294,12 +324,20 @@ function renderTree(fresh){
     el.attr('class','card'+(n.focus?' focus':'')+(sel===p.id?' sel':''));
     el.append('rect').attr('class','bg').attr('width',CW).attr('height',CH).attr('rx',9);
     el.append('rect').attr('width',5).attr('height',CH-16).attr('x',0).attr('y',8).attr('rx',2).style('fill',sexColor(p));
-    const av=avatarUrl(p); let tx=14;
-    if(av){el.append('image').attr('href',av).attr('x',8).attr('y',CH/2-20).attr('width',40).attr('height',40).attr('preserveAspectRatio','xMidYMid slice').attr('clip-path','url(#avclip)'); tx=56;}
-    const maxc=av?18:23;
-    const nm=fullName(p); el.append('text').attr('class','nm').attr('x',tx).attr('y',23).text(nm.length>maxc?nm.slice(0,maxc-1)+'…':nm).append('title').text(nm);
-    el.append('text').attr('class','yr').attr('x',tx).attr('y',40).text(lifespan(p)||'år okänt');
-    const pl=placeName(p.birthPlace)||p.occupation||''; el.append('text').attr('class','pl').attr('x',tx).attr('y',56).text(pl.length>maxc+2?pl.slice(0,maxc+1)+'…':pl);
+    const av=avatarUrl(p), tx=PX+PW+12, maxc=17;
+    if(av){el.append('image').attr('href',av).attr('x',PX).attr('y',PY).attr('width',PW).attr('height',PH).attr('preserveAspectRatio','xMidYMid slice').attr('clip-path','url(#avclip)');}
+    else{const ph=el.append('g').attr('class','ph-slot'+(Store.canEdit?' can':''));
+      ph.append('rect').attr('x',PX).attr('y',PY).attr('width',PW).attr('height',PH).attr('rx',6);
+      ph.append('text').attr('class','ini').attr('x',PX+PW/2).attr('y',PY+PH/2+2).attr('text-anchor','middle').text(initials(p));
+      if(Store.canEdit){ph.append('text').attr('class','add').attr('x',PX+PW/2).attr('y',PY+PH-9).attr('text-anchor','middle').text('+ bild');
+        ph.append('title').text('Lägg till en bild');
+        ph.on('click',ev=>{ev.stopPropagation(); select('person',p.id); setTimeout(()=>{const i=$('#uplAv'); if(i) i.click();},30);});}}
+    const nm=fullName(p), words=nm.split(' '), lines=['']; for(const w of words){const cur=lines[lines.length-1]; if(cur&&(cur+' '+w).length>maxc){if(lines.length===2){lines[1]+=' '+w; continue;} lines.push(w);} else lines[lines.length-1]=cur?cur+' '+w:w;}
+    const L=lines.map(l=>l.length>maxc+1?l.slice(0,maxc)+'…':l);
+    const t0=el.append('text').attr('class','nm').attr('x',tx).attr('y',28); L.forEach((l,i)=>t0.append('tspan').attr('x',tx).attr('dy',i?16:0).text(l)); t0.append('title').text(nm);
+    const yy=28+(L.length-1)*16;
+    el.append('text').attr('class','yr').attr('x',tx).attr('y',yy+20).text(lifespan(p)||'år okänt');
+    const pl=placeName(p.birthPlace)||p.occupation||''; el.append('text').attr('class','pl').attr('x',tx).attr('y',yy+37).text(pl.length>maxc+3?pl.slice(0,maxc+2)+'…':pl);
     const nc=(p.citations||[]).length; if(!nc){el.append('circle').attr('cx',CW-11).attr('cy',11).attr('r',3.5).style('fill','var(--warn)').append('title').text('Ingen källa ännu');}
     if(Store.canEdit){const eg=el.append('g').attr('class','eye').attr('transform',`translate(${CW-30},${CH-26})`); eg.append('rect').attr('width',22).attr('height',20).attr('rx',5);
       eg.append('path').attr('d','M4 10s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5zM4 4l14 12').attr('transform','translate(0,0)');
@@ -319,7 +357,7 @@ function renderTree(fresh){
     const x0=Math.min(...xs)-CW/2-30,x1=Math.max(...xs)+CW/2+30,y0=Math.min(...ys)-CH/2-40,y1=Math.max(...ys)+CH/2+30;
     let k=Math.min(1.05,Math.min(W/(x1-x0),(H-60)/(y1-y0)));
     let cx=(x0+x1)/2, cy=(y0+y1)/2;
-    if(k<.6){k=.6; cx=Math.max(x0+W/(2*k),Math.min(x1-W/(2*k),CW)); cy=Math.max(y0+(H-60)/(2*k),Math.min(y1-(H-60)/(2*k),0));}
+    if(k<(ui.simple?.85:.6)){k=ui.simple?.85:.6; cx=Math.max(x0+W/(2*k),Math.min(x1-W/(2*k),CW)); cy=Math.max(y0+(H-60)/(2*k),Math.min(y1-(H-60)/(2*k),0));}
     const t=d3.zoomIdentity.translate(W/2-k*cx,(H+50)/2-k*cy).scale(k);
     svg.transition().duration(fresh?0:450).call(treeZoom.transform,t);
   }
@@ -351,7 +389,7 @@ function renderPersons(){
       <div class="stat"><b>${all.length}</b><span>personer</span></div>
       <div class="stat"><b>${Math.round(100*nSrc/all.length)}%</b><span>har minst en källa</span></div>
       <div class="stat"><b>${years.length?Math.min(...years):'–'}</b><span>äldsta kända födelseår</span></div>
-      <div class="stat"><b>${anc}</b><span>kända anor till ${esc(P(ui.focus)?P(ui.focus).given||fullName(P(ui.focus)):'–')}</span></div>
+      <div class="stat"><b>${anc}</b><span>kända anor till ${esc(P(ui.focus)?shortName(P(ui.focus)):'–')}</span></div>
     </div>
     <div class="toolbar">
       <input class="t" id="plq" placeholder="Filtrera på namn, yrke, ort…" style="max-width:280px" value="${esc(ui.plQuery)}">
@@ -400,14 +438,14 @@ function personPanel(p){
   const aboutLabel=a=>{if(!a) return 'Allmänt'; if(a.startsWith('event:')){const e=(p.events||[]).find(e=>'event:'+e.id===a); return e?e.type+(e.date?' '+e.date:''):'Händelse';} return a;};
   return `<div class="ph"><div class="top">
       ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?`<img src="${esc(av)}" alt="">`:`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" accept="image/*" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?`<img src="${esc(av)}" alt="">`:esc(initials(p))}</div>`}
-      <div style="flex:1;min-width:0"><h3>${esc(fullName(p))}</h3><div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
+      <div style="flex:1;min-width:0"><h3>${fullHtml(p)}</h3><div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
       ${closeBtn}</div>
     <div class="acts">
       <button class="btn sm" data-act="card">Personkort</button>
       <button class="btn sm" data-act="focus">Visa i trädet</button>
       <button class="btn sm" data-act="rel">Hur är vi släkt?</button>
       ${ed?'<button class="btn sm" data-act="hide" title="Dölj personen eller en hel gren i en vy">👁 Dölj i vyn…</button>':''}
-      ${ed?`<button class="btn sm ${p.home?'primary':''}" data-act="home" title="Loggan uppe till vänster tar dig till startpersonen">${p.home?'⌂ Startperson':'Gör till startperson'}</button>`:''}
+      ${ed?`<button class="btn sm ${p.home?'primary':''}" data-act="home" title="Startsidan, trädet och släktskap utgår från den här personen">${p.home?'★ Det här är jag':'Det här är jag'}</button>`:''}
       ${ed?`<button class="btn sm" data-act="edit">Redigera</button><button class="btn sm ghost danger" data-act="delp">Ta bort</button>`:''}
     </div></div>
   ${p.updatedBy&&Store.user?`<div class="sec small muted" style="padding:8px 20px">Senast ändrad ${esc(fmtDate((p.updatedAt||'').slice(0,10)))} av <span data-uid="${esc(p.updatedBy)}">…</span></div>`:''}
@@ -422,14 +460,14 @@ function personPanel(p){
     ${parts.map(sp=>relRow('Partner',sp,ed&&(p.spouseIds||[]).includes(sp.id)?`<button class="iconbtn" title="Koppla bort" data-unspouse="${sp.id}">×</button>`:'')).join('')}
     ${kids.map(c=>relRow('Barn',c)).join('')}
     ${sibs.map(s=>relRow('Syskon',s)).join('')}
-    ${ed?`<div class="acts" style="display:flex;gap:6px;margin-top:8px"><button class="btn sm" data-add="partner">+ Partner</button><button class="btn sm" data-add="child">+ Barn</button></div>`:''}
+    ${ed?`<div class="acts" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-add="partner">+ Partner</button><button class="btn sm" data-add="child">+ Barn</button><button class="btn sm" data-add="sibling">+ Syskon</button><button class="btn sm" data-act="link" title="Koppla till en person som redan finns i arkivet">🔗 Koppla till befintlig person</button></div>`:''}
   </div>
   <div class="sec"><h4>Händelser ${ed?'<button class="btn sm" data-act="addev">+ Händelse</button>':''}</h4>
     <div id="evform"></div>
     ${evs.length?evs.map(e=>{const nc=e.id?cites.filter(c=>c.about==='event:'+e.id).length:0; return `<div class="ev"><span class="d">${esc(e.date||'–')}</span><span class="w"><b>${esc(e.type)}</b>${e.placeId?` · <a href="#" data-place="${e.placeId}">${esc(placeName(e.placeId))}</a>`:''}${e.withId&&P(e.withId)?` · med <a href="#" data-goto="${e.withId}">${esc(fullName(P(e.withId)))}</a>`:''}${e.desc?`<div class="small muted">${esc(e.desc)}</div>`:''}${nc?`<div class="small muted">📜 ${nc} källhänvisning${nc>1?'ar':''}</div>`:''}</span>
       <span>${ed&&e.id?`<button class="iconbtn" data-editev="${e.id}" title="Redigera">✎</button>`:''}</span></div>`}).join(''):'<div class="muted small">Inga händelser registrerade.</div>'}
   </div>
-  <div class="sec"><h4>Källor ${ed?'<button class="btn sm" data-act="addcite">+ Källhänvisning</button>':''}</h4>
+  <div class="sec cites"><h4>Källor ${ed?'<button class="btn sm" data-act="addcite">+ Källhänvisning</button>':''}</h4>
     <div id="citeform"></div>
     ${cites.length?cites.map(c=>{const s=S.sources[c.sourceId]; return `<div class="cite"><div style="display:flex;gap:6px"><b data-src="${c.sourceId}" style="flex:1">${esc(s?s.title:'(borttagen källa)')}</b>${ed?`<button class="iconbtn" data-delcite="${c.id}" title="Ta bort">×</button>`:''}</div>
       <div class="small muted">${esc(aboutLabel(c.about))}${c.detail?' · '+esc(c.detail):''}${s&&s.ref?' · '+esc(s.ref):''}</div></div>`}).join(''):`<div class="muted small">Inga källor ännu. Koppla husförhörslängder, dopböcker m.m. så vet du var uppgifterna kommer ifrån.</div>`}
@@ -448,7 +486,7 @@ function mediaSection(o){
 }
 function bindPanel(){
   const pn=$('#panel');
-  pn.querySelectorAll('[data-goto]').forEach(el=>el.onclick=e=>{e.preventDefault();showPerson(el.dataset.goto,{focus:ui.view==='trad'}); if(ui.view==='trad') ui.treeKey=null; renderAll();});
+  pn.querySelectorAll('[data-goto]').forEach(el=>el.onclick=e=>{e.preventDefault(); followPerson(el.dataset.goto);});
   pn.querySelectorAll('[data-place]').forEach(el=>el.onclick=e=>{e.preventDefault();select('place',el.dataset.place);});
   pn.querySelectorAll('[data-src]').forEach(el=>el.onclick=e=>{e.preventDefault();select('source',el.dataset.src);});
   if(!ui.sel) return;
@@ -471,8 +509,11 @@ function bindPersonPanel(p){
     if(act==='delp') confirmBox(`Ta bort ${fullName(p)}?`,'Personen tas bort och kopplingar till familjemedlemmar lossas. Det går inte att ångra.','Ta bort',()=>deletePerson(p.id));
     if(act==='addev') eventForm(p,null);
     if(act==='addcite') citeForm(p);
+    if(act==='link') linkModal(p.id);
   });
-  pn.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>openPersonModal(null,{rel:b.dataset.add,of:p.id}));
+  pn.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
+    if(b.dataset.add==='sibling'&&!p.fatherId&&!p.motherId){toast(`Syskon kopplas via föräldrarna. Lägg först till far eller mor till ${fullName(p)}.`,5000);return;}
+    openPersonModal(null,{rel:b.dataset.add,of:p.id});});
   pn.querySelectorAll('[data-unlink]').forEach(b=>b.onclick=()=>{const q=clone(p); q[b.dataset.unlink]=''; Store.put(q);});
   pn.querySelectorAll('[data-unspouse]').forEach(b=>b.onclick=()=>{const o=P(b.dataset.unspouse); const q=clone(p); q.spouseIds=(q.spouseIds||[]).filter(x=>x!==o.id); Store.put(q,{silent:true}); if(o){const r=clone(o); r.spouseIds=(r.spouseIds||[]).filter(x=>x!==p.id); Store.put(r,{silent:true});} renderAll();});
   pn.querySelectorAll('[data-editev]').forEach(b=>b.onclick=()=>eventForm(p,(p.events||[]).find(e=>e.id===b.dataset.editev)));
@@ -594,13 +635,15 @@ function openPersonModal(p,ctx){
   if(isNew&&base){
     if(ctx.rel==='child'){ if(base.sex==='K') p.motherId=base.id; else p.fatherId=base.id; const ps=partners(base); if(ps.length===1){const o=ps[0]; if(o.sex==='K'&&!p.motherId) p.motherId=o.id; else if(!p.fatherId) p.fatherId=o.id; else p.motherId=o.id;} p.surname=base.sex!=='K'?patronym(base):''; }
     if(ctx.rel==='partner'){p.sex=base.sex==='M'?'K':base.sex==='K'?'M':'';}
+    if(ctx.rel==='sibling'){p.fatherId=base.fatherId||''; p.motherId=base.motherId||''; p.surname=base.surname||'';}
   }
-  const relTitle={father:'far till',mother:'mor till',child:'barn till',partner:'partner till'}[ctx.rel];
+  const relTitle={father:'far till',mother:'mor till',child:'barn till',partner:'partner till',sibling:'syskon till'}[ctx.rel];
   const pl=id=>esc(id&&P(id)?personLabel(P(id)):'');
   modal(`<h3>${isNew?(base?'Lägg till '+relTitle+' '+esc(fullName(base)):'Ny person'):'Redigera '+esc(fullName(p))}</h3>
     ${isNew&&base?`<label class="f"><span>Välj en befintlig person istället (valfritt)</span><input class="t" id="mExisting" list="dlPersons" placeholder="Skriv för att söka…">${personOptions(base.id)}<div class="hint">Lämna tomt för att skapa en ny person.</div></label><hr style="border:none;border-top:1px solid var(--paper2);margin:14px 0">`:''}
     <div class="row2"><label class="f"><span>Förnamn</span><input class="t" id="mG" value="${esc(p.given)}" placeholder="t.ex. Anna Maria"></label>
     <label class="f"><span>Efternamn</span><input class="t" id="mS" value="${esc(p.surname)}" placeholder="t.ex. Larsdotter"></label></div>
+    <div class="f callpick"><span class="lab">Tilltalsnamn <span class="muted">– klicka på namnet personen kallades</span></span><div id="mCallChips"></div><input type="hidden" id="mCall" value="${esc(p.callName||'')}"></div>
     <div class="row2"><label class="f"><span>Kön</span><select class="t" id="mSex"><option value="">Okänt</option><option value="M" ${p.sex==='M'?'selected':''}>Man</option><option value="K" ${p.sex==='K'?'selected':''}>Kvinna</option></select></label>
     <label class="f"><span>Yrke / titel</span><input class="t" id="mO" value="${esc(p.occupation||'')}" placeholder="t.ex. Bonde, Piga, Soldat"></label></div>
     <div class="row2"><label class="f"><span>Född (datum)</span><input class="t" id="mBD" value="${esc(p.birthDate||'')}" placeholder="1823-04-12, 1823 eller ca 1820"></label>
@@ -615,13 +658,17 @@ function openPersonModal(p,ctx){
   (ov,close)=>{
     const q=s=>ov.querySelector(s);
     q('#mG').focus();
+    const chips=()=>{const ws=q('#mG').value.trim().split(/\s+/).map(w=>w.replace(/[()*]/g,'')).filter(Boolean), cur=q('#mCall').value;
+      q('#mCallChips').innerHTML=ws.length>1||cur?ws.map(w=>`<button type="button" class="cchip${w===cur?' on':''}" data-w="${esc(w)}">${esc(w)}</button>`).join('')+(cur&&!ws.includes(cur)?`<button type="button" class="cchip on" data-w="${esc(cur)}">${esc(cur)}</button>`:''):'<span class="muted small">Skriv flera förnamn så kan du välja ett.</span>';
+      q('#mCallChips').querySelectorAll('.cchip').forEach(b=>b.onclick=()=>{q('#mCall').value=q('#mCall').value===b.dataset.w?'':b.dataset.w; chips();});};
+    q('#mG').addEventListener('input',chips); chips();
     q('[data-x]').onclick=close;
     q('[data-ok]').onclick=async()=>{
       let target=null;
       if(q('#mExisting')&&q('#mExisting').value.trim()){target=personByLabel(q('#mExisting').value); if(!target){toast('Hittade ingen sådan person – välj i listan.');return;} target=clone(target);}
       if(!target){
         const g=q('#mG').value.trim(),s=q('#mS').value.trim(); if(!g&&!s){q('#mG').focus();toast('Skriv minst ett namn.');return;}
-        Object.assign(p,{given:g,surname:s,sex:q('#mSex').value,occupation:q('#mO').value.trim(),birthDate:q('#mBD').value.trim(),deathDate:q('#mDD').value.trim()});
+        Object.assign(p,{given:g,callName:q('#mCall').value,surname:s,sex:q('#mSex').value,occupation:q('#mO').value.trim(),birthDate:q('#mBD').value.trim(),deathDate:q('#mDD').value.trim()});
         const bp=ensurePlace(q('#mBP').value),dp=ensurePlace(q('#mDP').value);
         if(bp.created) Store.put(bp.created,{silent:true}); if(dp.created&&dp.created!==bp.created) Store.put(dp.created,{silent:true});
         p.birthPlace=bp.id; p.deathPlace=dp.id;
@@ -641,6 +688,7 @@ function openPersonModal(p,ctx){
           // link parents of the other parent with existing children of base where missing
         }
         if(ctx.rel==='child'&&target!==p){ if(b.sex==='K') target.motherId=b.id; else target.fatherId=b.id; }
+        if(ctx.rel==='sibling'&&target!==p){ if(!target.fatherId) target.fatherId=b.fatherId||''; if(!target.motherId) target.motherId=b.motherId||''; }
         // if adding a parent and the other parent exists, make them partners
         if((ctx.rel==='father'||ctx.rel==='mother')){const other=P(ctx.rel==='father'?b.motherId:b.fatherId); if(other){target.spouseIds=[...new Set([...(target.spouseIds||[]),other.id])]; const o=clone(other); o.spouseIds=[...new Set([...(o.spouseIds||[]),target.id])]; Store.put(o,{silent:true});}}
         await Store.put(target,{silent:true}); Store.put(b,{silent:true});
@@ -914,7 +962,8 @@ function renderMap(fresh){
 /* ============ IMPORT / EXPORT ============ */
 const FIELDS=[
   ['ref','Id / referens',['id','ref','nr','nummer','löpnr','person-id','personid']],
-  ['given','Förnamn',['förnamn','fornamn','first name','firstname','given','tilltalsnamn']],
+  ['given','Förnamn',['förnamn','fornamn','first name','firstname','given']],
+  ['callName','Tilltalsnamn',['tilltalsnamn','tilltal','call name','callname','known as']],
   ['surname','Efternamn',['efternamn','släktnamn','slaktnamn','surname','last name','lastname']],
   ['fullname','Hela namnet',['namn','name','fullständigt namn','fullname','person']],
   ['sex','Kön',['kön','kon','sex','gender']],
@@ -1024,13 +1073,14 @@ function renderImportStep2(){
 }
 function mapRow(r){
   const g=k=>imp.map[k]!=null?String(r[imp.map[k]]??'').trim():'';
-  const o={ref:g('ref'),given:g('given'),surname:g('surname'),sex:'',birthDate:g('birthDate'),birthPlace:g('birthPlace'),deathDate:g('deathDate'),deathPlace:g('deathPlace'),occupation:g('occupation'),father:g('father'),mother:g('mother'),spouse:g('spouse'),notes:g('notes'),source:g('source')};
+  const o={ref:g('ref'),given:g('given'),callName:g('callName'),surname:g('surname'),sex:'',birthDate:g('birthDate'),birthPlace:g('birthPlace'),deathDate:g('deathDate'),deathPlace:g('deathPlace'),occupation:g('occupation'),father:g('father'),mother:g('mother'),spouse:g('spouse'),notes:g('notes'),source:g('source')};
   const fn=g('fullname'); if(fn&&!o.given&&!o.surname){const parts=fn.split(/\s+/); o.surname=parts.length>1?parts.pop():''; o.given=parts.join(' ');}
   const sx=norm(g('sex')); o.sex=/^(m|man|male|pojke|herr)$/.test(sx)?'M':/^(k|kvinna|f|female|flicka|fru|kv)$/.test(sx)?'K':'';
   if(!o.sex){ if(/(dotter|dtr)$/i.test(o.surname)) o.sex='K'; else if(/son$/i.test(o.surname)) o.sex='M'; }
   return o;
 }
 async function runImport(){
+  if(Store.demo) exitDemo(true);
   const rows=imp.rows.map(mapRow).filter(r=>r.given||r.surname);
   const created=[],newPlaces={},newSources={};
   const byRef={},byName={};
@@ -1043,7 +1093,8 @@ async function runImport(){
   const now=new Date().toISOString();
   for(const r of rows){
     if(imp.skipDup){const ex=existing.find(p=>key(fullName(p),yearOf(p.birthDate))===key([r.given,r.surname].filter(Boolean).join(' '),yearOf(r.birthDate))); if(ex){skipped++; if(r.ref) byRef[norm(r.ref)]=ex; continue;}}
-    const p={kind:'person',id:uid('p'),given:r.given,surname:r.surname,sex:r.sex,birthDate:r.birthDate,birthPlace:place(r.birthPlace),deathDate:r.deathDate,deathPlace:place(r.deathPlace),occupation:r.occupation,notes:r.notes,events:[],citations:[],media:[],spouseIds:[],createdAt:now,_r:r};
+    let given=r.given||'', call=r.callName||''; if(given.includes('*')){const w=given.split(/\s+/).find(x=>x.includes('*')); if(w&&!call) call=w.replace(/\*/g,''); given=given.replace(/\*/g,'');}
+    const p={kind:'person',id:uid('p'),given,callName:call,surname:r.surname,sex:r.sex,birthDate:r.birthDate,birthPlace:place(r.birthPlace),deathDate:r.deathDate,deathPlace:place(r.deathPlace),occupation:r.occupation,notes:r.notes,events:[],citations:[],media:[],spouseIds:[],createdAt:now,_r:r};
     if(r.source){const sk=norm(r.source); let s=Object.values(S.sources).find(x=>norm(x.title)===sk)||newSources[sk]; if(!s){s={kind:'source',id:uid('s'),title:r.source,type:'Övrigt',createdAt:now}; newSources[sk]=s;} p.citations.push({id:uid('c'),sourceId:s.id,about:'',detail:''});}
     created.push(p); if(r.ref) byRef[norm(r.ref)]=p; addName(p);
   }
@@ -1128,14 +1179,48 @@ function toGedcom(){
 /* ============ Theme ============ */
 const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function currentTheme(){return document.documentElement.dataset.theme==='dark'?'dark':'light';}
+function applySize(lg){document.documentElement.dataset.size=lg?'lg':''; try{localStorage.setItem('sa-size',lg?'lg':'');}catch(e){} const b=$('#sizeBtn'); if(b){b.classList.toggle('on',!!lg); b.title=lg?'Mindre text':'Större text';}}
 function applyTheme(t){
   document.documentElement.dataset.theme=t;
   const b=$('#themeBtn'); if(b) b.innerHTML=t==='dark'
     ?'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>'
     :'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>';
 }
-(function(){let t=null; try{t=localStorage.getItem('sa-theme');}catch(e){} if(!t) t=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; applyTheme(t);})();
-$('#themeBtn').onclick=()=>{const t=currentTheme()==='dark'?'light':'dark'; applyTheme(t); try{localStorage.setItem('sa-theme',t);}catch(e){} mapState.drawn=false; renderAll();};
+(function(){let t=null; try{t=localStorage.getItem('sa-theme');}catch(e){} applyTheme(t==='dark'?'dark':'light');})();
+try{applySize(localStorage.getItem('sa-size')==='lg');}catch(e){}
+/* Simple mode ("farmorsläge"): big text, only Start, Träd and Personer. ?enkelt turns it on. */
+function applySimple(on,save=true){ui.simple=!!on; document.body.classList.toggle('simple',ui.simple); if(save) try{localStorage.setItem('sa-enkelt',on?'1':'');}catch(e){}
+}
+try{const q=new URLSearchParams(location.search); if(q.has('enkelt')){applySimple(true,false); document.documentElement.dataset.size='lg';} else applySimple(localStorage.getItem('sa-enkelt')==='1',false);}catch(e){}
+{const b=$('#simpleExit'); if(b) b.onclick=()=>{applySimple(false); ui.treeKey=null; renderAll(true); toast('Alla funktioner visas igen. Enkelt läge hittar du under Inställningar.',4500);};}
+{const b=$('#settingsBtn'); if(b) b.onclick=settingsModal;}
+function settingsModal(){
+  const h=homePerson(), lg=document.documentElement.dataset.size==='lg';
+  const opt=(name,val,cur,label,hint)=>`<label class="sopt"><input type="radio" name="${name}" value="${val}" ${val===cur?'checked':''}><span><b>${label}</b>${hint?`<small>${hint}</small>`:''}</span></label>`;
+  modal(`<h3>Inställningar</h3>
+    <div class="sgroup"><div class="slab">Vem är du?</div>
+      <div class="row-inline">${personPicker('setMe',h?h.id:'','Skriv ditt namn')}<button class="btn" id="setMeOk">Det här är jag</button></div>
+      <div class="hint">Startsidan, trädet och släktskap utgår från dig.</div></div>
+    <div class="sgroup"><div class="slab">Namn</div>
+      ${opt('nm','full',ui.nameMode,'Fullständigt namn','Lars Anders Godvig Englund')}
+      ${opt('nm','call',ui.nameMode,'Bara tilltalsnamn','Lars Englund – om tilltalsnamnet är markerat')}</div>
+    <div class="sgroup"><div class="slab">Utseende</div>
+      ${opt('th','light',currentTheme(),'Ljust','')}${opt('th','dark',currentTheme(),'Mörkt','')}
+      <label class="sopt"><input type="checkbox" id="setLg" ${lg?'checked':''}><span><b>Större text</b></span></label></div>
+    <div class="sgroup"><div class="slab">Enkelt läge</div>
+      <label class="sopt"><input type="checkbox" id="setSimple" ${ui.simple?'checked':''}><span><b>Visa bara det viktigaste</b><small>Stor text och bara Start, Träd och Personer. Bra för den som inte vill krångla – till exempel farmor. Länk som öppnar i enkelt läge: lägg till <code>?enkelt</code> i adressen.</small></span></label></div>
+    ${allPersonsDatalist()}
+    <div class="foot"><span class="muted small" style="margin-right:auto">Version ${APP_VERSION}</span><button class="btn primary" data-x>Klar</button></div>`,
+  (ov,close)=>{
+    const q=x=>ov.querySelector(x);
+    q('[data-x]').onclick=close;
+    q('#setMeOk').onclick=async()=>{const p=personByLabel(q('#setMe').value); if(!p){toast('Välj ditt namn i listan som kommer upp när du skriver.');return;} await setHome(p.id); setFocus(p.id); ui.treeKey=null; renderAll(true);};
+    ov.querySelectorAll('[name=nm]').forEach(i=>i.onchange=()=>{ui.nameMode=i.value; try{localStorage.setItem('sa-names',i.value);}catch(e){} ui.treeKey=null; renderAll(true);});
+    ov.querySelectorAll('[name=th]').forEach(i=>i.onchange=()=>{applyTheme(i.value); try{localStorage.setItem('sa-theme',i.value);}catch(e){} mapState.drawn=false; renderAll();});
+    q('#setLg').onchange=e=>applySize(e.target.checked);
+    q('#setSimple').onchange=e=>{applySimple(e.target.checked); if(e.target.checked){applySize(true); q('#setLg').checked=true;} ui.treeKey=null; renderAll(true);};
+  });
+}
 
 /* ============ Shared bits ============ */
 const NUMW=['noll','ett','två','tre','fyra','fem','sex','sju','åtta','nio','tio','elva','tolv'];
@@ -1159,15 +1244,13 @@ function renderStart(){
   const ed=Store.canEdit;
   if(!all.length){
     v.innerHTML=`<div class="start"><div class="hero"><div>
-      <h1>Ditt släktarkiv</h1>
-      <p>Samla släkten på ett ställe – med träd, solfjäder, källor från kyrkböckerna, bilder, tidslinje och karta. Börja med dig själv eller den äldsta ana du känner till, eller läs in en lista du redan har i Excel.</p>
-      <div class="acts">${ed?`<button class="btn primary" onclick="openPersonModal()">+ Lägg till första personen</button><a class="btn" href="#import">Importera från Excel</a>`:''}${Store.isAdmin?'<button class="btn" onclick="loadDemo()">👑 Utforska Vasaätten</button>':''}</div>
+      <h1>Välkommen till Kinsaga</h1>
+      <p>Här samlar du släkten på ett ställe: släktträd, bilder, källor, tidslinje och karta. Allt sparas automatiskt. Välj hur du vill börja.</p>
     </div><div class="hero-art">${heroArt()}</div></div>
-    <h2 class="sec-t">Så kommer du igång</h2>
-    <div class="tiles">
-      <div class="tile"><span class="ic">1</span><b>Lägg in personer</b><span>En i taget, eller importera en hel lista från Excel eller CSV.</span></div>
-      <div class="tile"><span class="ic">2</span><b>Koppla källor</b><span>Husförhörslängder, dopböcker och bouppteckningar – med sida och bild-ID.</span></div>
-      <div class="tile"><span class="ic">3</span><b>Utforska</b><span>Träd, solfjäder, tidslinje, karta och släktskapsberäknare.</span></div>
+    <div class="choices">
+      ${ed?`<a class="choice primary" href="#import"><span class="ic">📄</span><b>Jag har en släktlista</b><span>Läs in en Excel- eller CSV-fil. Du ser allt innan något sparas.</span><span class="go">Läs in fil →</span></a>
+      <button class="choice" onclick="openPersonModal()"><span class="ic">✏️</span><b>Börja med mig själv</b><span>Skriv in dig själv och lägg sedan till föräldrar, mor- och farföräldrar.</span><span class="go">Lägg till första personen →</span></button>`:''}
+      <button class="choice" onclick="loadDemo()"><span class="ic">👑</span><b>Titta på ett exempel</b><span>Vasaätten, från Gustav Vasa till drottning Kristina. Exemplet sparas inte.</span><span class="go">Visa exemplet →</span></button>
     </div></div>`;
     return;
   }
@@ -1180,7 +1263,7 @@ function renderStart(){
   const dups=findDups().length;
   const recent=all.slice().sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')).slice(0,8);
   const tiles=[
-    ['#trad','🌳','Släktträd','Anor och ättlingar runt '+esc(home?home.given||fullName(home):'startpersonen')],
+    ['#trad','🌳','Släktträd','Anor och ättlingar runt '+esc(home?shortName(home):'dig')],
     ['#solfjader','◠','Solfjäder',anc?`${anc} kända anor i ${maxGen} generationer`:'Anorna i en halvcirkel'],
     ['#personer','👥','Personer',`${all.length} personer${nNoSrc?` · ${nNoSrc} utan källa`:''}`],
     ['#slaktskap','🔗','Släktskap','Hur är två personer släkt med varandra?'],
@@ -1192,14 +1275,120 @@ function renderStart(){
   ];
   v.innerHTML=`<div class="start"><div class="hero"><div>
       <h1>${home?'Släkten kring '+esc(fullName(home)):'Ditt släktarkiv'}</h1>
-      <p>${all.length} personer${years.length?`, från ${Math.min(...years)} till ${Math.max(...years)}`:''}. ${home&&anc?`Du har hittat ${anc} anor till ${esc(home.given||fullName(home))}, ${maxGen} generationer bakåt.`:''}${home&&!anc&&descendantsOf(home.id).size?`${descendantsOf(home.id).size} ättlingar till ${esc(home.given||fullName(home))}.`:''}</p>
-      <div class="acts"><button class="btn primary" onclick="goHome()">Öppna släktträdet</button>${home?`<button class="btn" onclick="openCard('${home.id}')">Personkort</button>`:''}${ed?'<button class="btn" onclick="openPersonModal()">+ Ny person</button>':''}<button class="btn" onclick="shareModal(activeView())">🔗 Dela med släkten</button>${demoActive()&&Store.isAdmin?'<button class="btn" onclick="exitDemo()">Avsluta exemplet</button>':''}</div>
+      <p>${all.length} personer${years.length?`, från ${Math.min(...years)} till ${Math.max(...years)}`:''}. ${home&&anc?`Du har hittat ${anc} anor till ${esc(shortName(home))}, ${maxGen} generationer bakåt.`:''}${home&&!anc&&descendantsOf(home.id).size?`${descendantsOf(home.id).size} ättlingar till ${esc(shortName(home))}.`:''}</p>
+      <div class="acts"><button class="btn primary" onclick="goHome()">Öppna släktträdet</button>${home?`<button class="btn" onclick="openCard('${home.id}')">Personkort</button>`:''}${ed?'<button class="btn" onclick="openPersonModal()">+ Ny person</button>':''}<button class="btn" onclick="shareModal(activeView())">🔗 Dela med släkten</button>${demoActive()?'<button class="btn" onclick="exitDemo()">Stäng exemplet</button>':''}</div>
+      <div class="hero-links">${demoActive()?'':'<a href="#" onclick="loadDemo();return false">👑 Titta på exemplet Vasaätten</a>'}${ui.simple?'<a href="#" onclick="applySimple(false);renderAll(true);return false">Visa alla funktioner</a>':'<a href="#" onclick="applySimple(true);applySize(true);renderAll(true);return false">Enkelt läge</a>'}<a href="#" onclick="settingsModal();return false">Inställningar</a></div>
     </div><div class="hero-art">${heroArt()}</div></div>
+    ${treesSection()}
     <div class="tiles">${tiles.map(([h,ic,t,d])=>`<a class="tile" href="${h}"><span class="ic">${ic}</span><b>${t}</b><span>${d}</span></a>`).join('')}</div>
     <h2 class="sec-t">Senast ändrade</h2>
     <div class="recent">${recent.map(p=>chipHTML(p,p.updatedBy&&Store.user?`av <span data-uid="${esc(p.updatedBy)}">…</span>`:'')).join('')}</div>
     ${activeView()?`<p class="small muted" style="margin-top:18px">Du tittar på vyn <b>${esc(activeView().name)}</b> – ${HIDDEN.size} personer är dolda. Byt vy uppe till höger.</p>`:''}</div>`;
-  bindChips(v,openCard); fillNames(v);
+  bindChips(v,openCard); fillNames(v); bindTrees(v);
+}
+
+/* ============ SEPARATE TREES ============ */
+let _treesKey=null,_trees=null;
+/** Groups of people not (yet) connected to each other, biggest first. */
+function trees(){
+  const ps0=Object.values(S.persons);
+  const key=ps0.length+'|'+ps0.reduce((m,p)=>(p.updatedAt||'')>m?p.updatedAt:m,'')+'|'+(Store.demo?'d':'');
+  if(key===_treesKey) return _trees;
+  const home=homePerson();
+  _trees=KinCore.components(S.persons).map((ids,i)=>{
+    const ps=ids.map(P);
+    const cnt={}; for(const p of ps){const sn=(p.surname||'').trim().split(/\s+/).pop(); if(sn) cnt[sn]=(cnt[sn]||0)+1;}
+    const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+    const hasHome=!!(home&&ids.includes(home.id));
+    let root=hasHome?home:null;
+    if(!root){ if(ids.length<=400){let best=-1; for(const p of ps){const n=ancestorsOf(p.id).size+descendantsOf(p.id).size; if(n>best){best=n;root=p;}}} else root=ps[0]; }
+    const ys=ps.map(p=>yearOf(p.birthDate)).filter(Boolean);
+    return {i,ids,set:new Set(ids),size:ids.length,root,home:hasHome,
+      name:top.length?'Släkten '+(top[1]&&cnt[top[1]]>=cnt[top[0]]/2?top[0]+' & '+top[1]:top[0]):fullName(root),
+      span:ys.length?[Math.min(...ys),Math.max(...ys)]:null};
+  });
+  _treesKey=key; return _trees;
+}
+const treeOf=id=>trees().find(t=>t.set.has(id))||null;
+function crossTreeDups(){return findDups().filter(d=>treeOf(d.a.id)!==treeOf(d.b.id));}
+function treesSection(){
+  const ts=trees(); if(ts.length<2) return '';
+  const big=ts.filter(t=>t.size>1), lone=ts.filter(t=>t.size===1);
+  const sugg=Store.canEdit?crossTreeDups().slice(0,4):[];
+  const card=t=>`<div class="treecard${t.home?' mine':''}">
+      <div class="tc-h"><b>${esc(t.name)}</b>${t.home?'<span class="tag">Din släkt</span>':''}</div>
+      <div class="muted small">${t.size} personer${t.span?` · ${t.span[0]}–${t.span[1]}`:''}</div>
+      <div class="small tc-names">${t.ids.slice(0,40).map(P).sort((a,b)=>(yearOf(a.birthDate)||9999)-(yearOf(b.birthDate)||9999)).slice(0,3).map(p=>esc(fullName(p))).join(', ')}${t.size>3?' …':''}</div>
+      <div class="tc-acts"><button class="btn sm primary" data-topen="${t.root.id}">Visa trädet</button>${Store.canEdit?`<button class="btn sm" data-tlink="${t.root.id}">🔗 Koppla ihop</button>`:''}</div></div>`;
+  return `<h2 class="sec-t">Dina släktträd <span class="muted" style="font-weight:400">· ${ts.length} st som inte hänger ihop än</span></h2>
+    <p class="muted small" style="margin:-4px 0 12px;max-width:720px">Varje kort är en grupp personer som inte är kopplade till de andra. När du vet hur de är släkt klickar du på <b>Koppla ihop</b>, så blir de ett träd.</p>
+    ${sugg.length?`<div class="box suggest"><h3>Kanske samma person?</h3><p>De här personerna finns i olika träd men liknar varandra. Är det samma person blir träden ett när du slår ihop dem.</p>
+      ${sugg.map((d,i)=>`<div class="sg-row"><span><b>${esc(personLabel(d.a))}</b> <span class="muted small">i ${esc(treeOf(d.a.id).name)}</span><br><b>${esc(personLabel(d.b))}</b> <span class="muted small">i ${esc(treeOf(d.b.id).name)}</span></span><span class="sg-acts"><button class="btn sm primary" data-sgyes="${i}">Ja, samma person</button><button class="btn sm ghost" data-sgno="${i}">Nej</button></span></div>`).join('')}</div>`:''}
+    <div class="treecards">${big.map(card).join('')}
+    ${lone.length?`<div class="treecard"><div class="tc-h"><b>Ensamma personer</b></div><div class="muted small">${lone.length} personer utan kopplingar</div>
+      <div class="lone">${lone.slice(0,12).map(t=>`<span class="lone-p"><a href="#" data-topen="${t.root.id}">${esc(fullName(t.root))}</a>${Store.canEdit?` <button class="iconbtn" title="Koppla ihop" data-tlink="${t.root.id}">🔗</button>`:''}</span>`).join('')}${lone.length>12?` <span class="muted small">+${lone.length-12} till</span>`:''}</div></div>`:''}</div>`;
+}
+function bindTrees(root){
+  root.querySelectorAll('[data-topen]').forEach(b=>b.onclick=e=>{e.preventDefault(); setFocus(b.dataset.topen); ui.treeKey=null; if(location.hash!=='#trad') location.hash='trad'; else renderAll(true);});
+  root.querySelectorAll('[data-tlink]').forEach(b=>b.onclick=()=>linkModal(b.dataset.tlink));
+  const sugg=crossTreeDups().slice(0,4);
+  root.querySelectorAll('[data-sgyes]').forEach(b=>b.onclick=()=>{const d=sugg[+b.dataset.sgyes]; const score=p=>Object.values(p).filter(Boolean).length+(p.citations||[]).length; const [k,x]=score(d.a)>=score(d.b)?[d.a,d.b]:[d.b,d.a];
+    confirmBox(`Slå ihop till en person?`,`${fullName(k)} och ${fullName(x)} blir en och samma person. Uppgifter som saknas fylls i från den andra, och deras släktträd blir ett.`,'Slå ihop',()=>mergePersons(k.id,x.id));});
+  root.querySelectorAll('[data-sgno]').forEach(b=>b.onclick=()=>{const d=sugg[+b.dataset.sgno]; const a=clone(d.a); a.notDup=[...new Set([...(a.notDup||[]),d.b.id])]; Store.put(a);});
+}
+const LINK_REL=[['parent','är förälder till'],['child','är barn till'],['partner','är gift eller sambo med'],['sibling','är syskon till'],['same','är samma person som']];
+function linkModal(aId,bId){
+  modal(`<h3>Koppla ihop två personer</h3>
+    <p class="muted" style="margin-top:-4px;line-height:1.5">Välj två personer och hur de hör ihop. Ligger de i olika släktträd blir träden ett.</p>
+    <label class="f"><span>Den här personen …</span>${personPicker('lkA',aId,'Skriv ett namn')}</label>
+    <div class="relpick">${LINK_REL.map(([k,t],i)=>`<label class="rp"><input type="radio" name="lkR" value="${k}" ${i===0?'checked':''}><span>${t}</span></label>`).join('')}</div>
+    <label class="f"><span>… den här personen</span>${personPicker('lkB',bId,'Skriv ett namn')}</label>
+    <div class="lk-sum" id="lkSum"></div>
+    ${allPersonsDatalist()}
+    <div class="foot"><button class="btn" data-x>Avbryt</button><button class="btn primary" data-ok>Koppla ihop</button></div>`,
+  (ov,close)=>{
+    const q=x=>ov.querySelector(x);
+    const read=()=>({a:personByLabel(q('#lkA').value),b:personByLabel(q('#lkB').value),rel:(ov.querySelector('[name=lkR]:checked')||{}).value});
+    const upd=()=>{const {a,b}=read(); const el=q('#lkSum');
+      ov.querySelectorAll('.rp span').forEach((sp,i)=>{const k=LINK_REL[i][0]; sp.textContent=k==='parent'&&a&&a.sex?(a.sex==='M'?'är far till':'är mor till'):k==='child'&&a&&a.sex?(a.sex==='M'?'är son till':'är dotter till'):k==='sibling'&&a&&a.sex?(a.sex==='M'?'är bror till':'är syster till'):LINK_REL[i][1];});
+      if(!a||!b){el.innerHTML='<span class="muted">Välj båda personerna i listorna som kommer upp när du skriver.</span>'; return;}
+      const ta=treeOf(a.id),tb=treeOf(b.id); const lbl=ov.querySelector('[name=lkR]:checked+span').textContent;
+      el.innerHTML=`<b>${esc(fullName(a))}</b> ${esc(lbl)} <b>${esc(fullName(b))}</b>.${ta&&tb&&ta!==tb?`<br><span class="ok-t">✓ ${esc(ta.name)} (${ta.size}) och ${esc(tb.name)} (${tb.size}) blir ett släktträd.</span>`:''}`;};
+    ov.querySelectorAll('input').forEach(i=>{i.oninput=upd; i.onchange=upd;}); upd();
+    (aId?q('#lkB'):q('#lkA')).focus();
+    q('[data-x]').onclick=close;
+    q('[data-ok]').onclick=()=>{const {a,b,rel}=read();
+      if(!a||!b){toast('Välj båda personerna i listan.');return;}
+      if(a.id===b.id){toast('Välj två olika personer.');return;}
+      const ta=treeOf(a.id),tb=treeOf(b.id), joined=ta&&tb&&ta!==tb, total=joined?ta.size+tb.size:0;
+      const done=()=>{ui.treeKey=null; setFocus(rel==='same'?a.id:b.id); toast(joined?`Klart! Två släktträd blev ett – ${total} personer.`:'Klart! Kopplingen är sparad.',4000); renderAll(true);};
+      if(rel==='same'){close(); confirmBox('Slå ihop till en person?',`${fullName(a)} och ${fullName(b)} blir en och samma person. Uppgifter som saknas fylls i från den andra.`,'Slå ihop',async()=>{await mergePersons(a.id,b.id); done();}); return;}
+      const err=linkPersons(a,rel,b); if(err){toast(err,6000);return;}
+      close(); done();
+    };
+  });
+}
+/** Wire two existing people together. Returns an error message or ''. */
+function linkPersons(a,rel,b){
+  if(rel==='child') return linkPersons(b,'parent',a);
+  const A=clone(a),B=clone(b);
+  if(rel==='partner'){A.spouseIds=[...new Set([...(A.spouseIds||[]),B.id])]; B.spouseIds=[...new Set([...(B.spouseIds||[]),A.id])]; Store.put(A,{silent:true}); Store.put(B,{silent:true}); return '';}
+  if(rel==='parent'){
+    if(ancestorsOf(A.id).has(B.id)) return `${fullName(b)} står redan som ana till ${fullName(a)} – det kan inte vara tvärtom också.`;
+    const slot=A.sex==='M'?'fatherId':A.sex==='K'?'motherId':(!B.fatherId?'fatherId':'motherId');
+    if(B[slot]&&B[slot]!==A.id){const o=P(B[slot]); return `${fullName(b)} har redan ${slot==='fatherId'?'en far':'en mor'}${o?' ('+fullName(o)+')':''}. Är det samma person? Välj då ”är samma person som”.`;}
+    B[slot]=A.id; if(!A.sex){A.sex=slot==='fatherId'?'M':'K'; Store.put(A,{silent:true});}
+    const other=P(B[slot==='fatherId'?'motherId':'fatherId']);
+    if(other&&!(A.spouseIds||[]).includes(other.id)){const a2=clone(P(A.id)||A); a2.sex=a2.sex||A.sex; a2.spouseIds=[...new Set([...(a2.spouseIds||[]),other.id])]; Store.put(a2,{silent:true}); const o2=clone(other); o2.spouseIds=[...new Set([...(o2.spouseIds||[]),A.id])]; Store.put(o2,{silent:true});}
+    Store.put(B,{silent:true}); return '';
+  }
+  if(rel==='sibling'){
+    if(!A.fatherId&&!A.motherId&&!B.fatherId&&!B.motherId) return `Syskon kopplas ihop via föräldrarna. Lägg först till far eller mor för ${fullName(a)} eller ${fullName(b)}.`;
+    for(const k of ['fatherId','motherId']){ if(A[k]&&B[k]&&A[k]!==B[k]) return `${fullName(a)} och ${fullName(b)} har olika ${k==='fatherId'?'fäder':'mödrar'} inlagda. Halvsyskon kopplar du genom att ge dem samma ${k==='fatherId'?'mor':'far'}.`; }
+    for(const k of ['fatherId','motherId']){ if(A[k]&&!B[k]) B[k]=A[k]; if(B[k]&&!A[k]) A[k]=B[k]; }
+    Store.put(A,{silent:true}); Store.put(B,{silent:true}); return '';
+  }
+  return 'Okänd koppling';
 }
 
 /* ============ FAN CHART ============ */
@@ -1208,7 +1397,7 @@ function renderFan(fresh){
   const v=$('#view');
   if(!Object.keys(S.persons).length){v.innerHTML=emptyState();return;}
   let F=P(ui.focus); if(!ui.fanGen) ui.fanGen=5; let fanNote='';
-  if(F&&!F.fatherId&&!F.motherId){let best=null,bn=0; for(const p of Object.values(S.persons)){const n=ancestorsOf(p.id).size; if(n>bn){bn=n;best=p;}} if(best){fanNote=`${esc(F.given||fullName(F))} har inga registrerade föräldrar – visar ${esc(fullName(best))}, som har flest kända anor.`; F=best;}}
+  if(F&&!F.fatherId&&!F.motherId){let best=null,bn=0; for(const p of Object.values(S.persons)){const n=ancestorsOf(p.id).size; if(n>bn){bn=n;best=p;}} if(best){fanNote=`${esc(shortName(F))} har inga registrerade föräldrar – visar ${esc(fullName(best))}, som har flest kända anor.`; F=best;}}
   if(!$('#fanSvg')||fresh){
     v.innerHTML=`<div id="fanWrap"><svg id="fanSvg"><g class="vp"></g></svg>
       <div class="tree-tools"><span class="fname" id="fanName"></span>
@@ -1297,7 +1486,7 @@ function storyOf(p){
     const married=(p.spouseIds||[]).includes(sp.id)||vig;
     let t=married?`${He} gifte sig${vig&&vig.date?' '+whenText(vig.date):''}${vig&&vig.placeId?' i '+placeName(vig.placeId):''} med ${fullName(sp)}`:`${He} fick barn med ${fullName(sp)}`;
     const ck=kids.filter(c=>c.fatherId===sp.id||c.motherId===sp.id);
-    const kl=listJoin(ck.map(c=>(c.given||fullName(c))+(yearOf(c.birthDate)?` (${yearOf(c.birthDate)})`:'')));
+    const kl=listJoin(ck.map(c=>(shortName(c))+(yearOf(c.birthDate)?` (${yearOf(c.birthDate)})`:'')));
     if(ck.length) t+=married?`, och tillsammans fick de ${numw(ck.length)} barn: ${kl}`:` – ${kl}`;
     out.push(t+'.');
   }
@@ -1380,7 +1569,7 @@ function renderDups(){
 }
 async function mergePersons(keepId,dropId){
   const k=clone(P(keepId)), d=P(dropId); if(!k||!d) return;
-  for(const f of ['given','surname','sex','birthDate','birthPlace','deathDate','deathPlace','occupation','fatherId','motherId']) if(!k[f]&&d[f]) k[f]=d[f];
+  for(const f of ['given','callName','surname','sex','birthDate','birthPlace','deathDate','deathPlace','occupation','fatherId','motherId']) if(!k[f]&&d[f]) k[f]=d[f];
   if(d.notes&&d.notes!==k.notes) k.notes=[k.notes,d.notes].filter(Boolean).join('\n\n');
   const evKey=e=>e.type+'|'+(e.date||'')+'|'+(e.placeId||'');
   const evs=(k.events||[]).slice(); for(const e of d.events||[]) if(!evs.some(x=>evKey(x)===evKey(e))) evs.push(e); k.events=evs;
@@ -1437,14 +1626,14 @@ function renderRel(){
     pathHTML=`<div class="rel-path" style="flex-direction:column;align-items:center;gap:0"><div class="rel-top">${top.map(p=>chipHTML(p,'gemensam ana')).join('')}</div>
       <div style="display:flex;gap:30px;justify-content:center;flex-wrap:wrap"><div class="rel-col">${col(left)}</div>${right.length?`<div class="rel-col">${col(right)}</div>`:''}</div></div>`;
   }
-  const an=esc(A.given||fullName(A)), bn=esc(fullName(B));
+  const an=esc(shortName(A)), bn=esc(fullName(B));
   v.innerHTML=`<div class="view-pad" style="max-width:980px"><div class="toolbar"><h2>Hur är vi släkt?</h2></div>
     <div class="rel-pick"><label class="f" style="margin:0"><span>Person A</span>${personPicker('relA',A.id,'Välj person')}</label>
       <button class="btn" id="relSwap" title="Byt plats">⇄</button>
       <label class="f" style="margin:0"><span>Person B</span>${personPicker('relB',B.id,'Välj person')}</label>${allPersonsDatalist()}</div>
     <div class="rel-answer">${res.text?`<div class="muted small" style="margin-bottom:6px">${res.kind==='blood'&&res.r?`${res.r.a+res.r.b} generationssteg via ${listJoin(res.r.commons.map(id=>esc(fullName(P(id)))))}`:res.kind==='inlaw'?'Släkt genom giftermål':res.kind==='partner'?'Partner':''}</div>
       <div class="big"><b>${bn}</b> är ${genitive(an)} <b>${esc(res.text)}</b>.</div>
-      ${res.kind==='blood'&&res.r&&res.r.a!==res.r.b&&res.r.a>0&&res.r.b>0?`<div class="muted" style="margin-top:8px">Omvänt: ${an} är ${esc(genitive(B.given||fullName(B)))} ${esc(bloodTerm({...res.r,a:res.r.b,b:res.r.a,pa:res.r.pb,pb:res.r.pa},B.id,A.id))}.</div>`:''}
+      ${res.kind==='blood'&&res.r&&res.r.a!==res.r.b&&res.r.a>0&&res.r.b>0?`<div class="muted" style="margin-top:8px">Omvänt: ${an} är ${esc(genitive(shortName(B)))} ${esc(bloodTerm({...res.r,a:res.r.b,b:res.r.a,pa:res.r.pb,pb:res.r.pa},B.id,A.id))}.</div>`:''}
       ${pathHTML}`
     :`<div class="big">Ingen känd släktskap</div><p class="muted" style="margin:8px 0 0">Hittade ingen gemensam ana eller koppling via giftermål mellan ${an} och ${bn} i arkivet.</p>`}</div></div>`;
   const pick=(inp,key)=>{inp.onchange=()=>{const p=personByLabel(inp.value); if(p){ui[key]=p.id; renderRel();} else toast('Välj en person i listan');};};
@@ -1580,7 +1769,7 @@ function viewModal(v,preset){
     <p class="muted" style="line-height:1.5;margin-top:-6px">En vy bestämmer vad som syns, t.ex. <i>Pappas sida</i> för kusinerna på fars sida. Inget raderas – allt finns kvar i <i>Hela släkten</i>.</p>
     <label class="f"><span>Namn på vyn</span><input class="t" id="vwN" value="${esc(v.name)}" placeholder="t.ex. Pappas sida"></label>
     ${qb.length?`<div class="qb"><div class="qb-h">Visa grenar <span class="muted small">utifrån ${esc(fullName(B))}</span></div>${qb.map(r=>`<label class="qb-row" style="padding-left:${r.lvl*22}px"><input type="checkbox" data-qb="${r.id}" data-par="${r.par||''}" ${(v.hideUp||[]).includes(r.id)?'':'checked'}><span><b>${r.label}</b> <span class="muted small">via ${esc(r.who)}</span></span></label>`).join('')}</div>`
-      :`<p class="small muted">Tips: gör dig själv till <i>startperson</i> så kan du välja pappas och mammas sida med ett klick här.</p>`}
+      :`<p class="small muted">Tips: markera dig själv som <i>jag</i> (Inställningar eller ”Det här är jag” på ditt personkort) så kan du välja pappas och mammas sida med ett klick här.</p>`}
     <div class="qb-h" style="margin-top:14px">Dolda personer och grenar</div>
     <div id="vwRules"></div>
     <details style="margin-top:6px"><summary style="cursor:pointer;color:var(--accent);font-size:13px">+ Dölj en viss person eller gren</summary>
@@ -1773,29 +1962,41 @@ function demoData(){
 }
 let _demoIds=null;
 const demoIds=()=>_demoIds||(_demoIds=(()=>{const d=demoData(); return new Set([...d.places,...d.sources,...d.persons].map(o=>o.id));})());
-const demoActive=()=>{const ids=demoIds(); return Object.keys(ALL.persons).some(id=>ids.has(id));};
-function updateDemoBar(){const b=$('#demoBar'); if(b) b.classList.toggle('on',Store.loaded&&demoActive()); const x=$('#demoExitBtn'); if(x) x.style.display=Store.isAdmin?'':'none';}
+const demoActive=()=>!!Store.demo;
+function updateDemoBar(){const b=$('#demoBar'); if(b) b.classList.toggle('on',Store.loaded&&demoActive()); document.body.classList.toggle('demo',demoActive());}
+/* The example family lives only in memory: it is never saved, so it can't
+   end up in someone's own archive or in a shared tree. */
 function loadDemo(){
+  if(Store.demo){ if(location.hash!=='#trad') location.hash='trad'; return; }
   const {places,sources,persons}=demoData();
-  ui.viewId=null; try{localStorage.removeItem('sa-viewid');}catch(e){}
-  setFocus('p_gustav1'); ui.ancGen=1; ui.descGen=2; ui.treeKey=null; ui.sel=null;
-  Store.putMany([...places,...sources,...persons]).then(()=>toast('Vasaätten är inläst. Avsluta exemplet när du vill via den gula raden högst upp.',5000));
-  if(location.hash!=='#trad') location.hash='trad'; else renderAll();
+  Store.demo={saved:{persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views},focus:ui.focus,viewId:ui.viewId};
+  const m=a=>Object.fromEntries(a.map(o=>[o.id,clone(o)]));
+  ALL.persons=m(persons); ALL.places=m(places); ALL.sources=m(sources); ALL.views={};
+  ui.viewId=null; ui.focus='p_gustav1'; ui.ancGen=3; ui.descGen=2; ui.treeKey=null; ui.sel=null;
+  applyView();
+  toast('Det här är ett exempel. Inget sparas – dina egna uppgifter ligger kvar orörda.',5000);
+  if(location.hash!=='#trad') location.hash='trad'; else renderAll(true);
 }
-function exitDemo(){
-  confirmBox('Avsluta exemplet Vasaätten?','Alla personer, platser och källor från exemplet tas bort. Sådant du själv har lagt till ligger kvar.','Avsluta exemplet',async()=>{
-    const ids=demoIds();
-    for(const p of Object.values(ALL.persons)){ if(ids.has(p.id)) continue; const q=clone(p); let ch=false;
-      for(const k of ['fatherId','motherId']) if(ids.has(q[k])){q[k]='';ch=true;}
-      const sp=(q.spouseIds||[]).filter(x=>!ids.has(x)); if(sp.length!==(q.spouseIds||[]).length){q.spouseIds=sp;ch=true;}
-      if(ch) Store.put(q,{silent:true}); }
-    for(const v of Object.values(ALL.views)){const refs=[...(v.hide||[]),...(v.hideUp||[]),...(v.hideDown||[])]; if(refs.every(id=>ids.has(id))) Store.del('view',v.id,{silent:true});}
-    ui.viewId=null; try{localStorage.removeItem('sa-viewid');}catch(e){}
-    for(const [kind,col] of [['person','persons'],['place','places'],['source','sources']]) for(const id of Object.keys(ALL[col])) if(ids.has(id)) Store.del(kind,id,{silent:true});
-    ui.sel=null; ui.focus=null; ui.treeKey=null; try{localStorage.removeItem('sa-focus');}catch(e){}
-    toast('Exemplet är borttaget');
-    if(location.hash!=='#start') location.hash='start'; else renderAll(true);
-  });
+function exitDemo(quiet){
+  const d=Store.demo; if(!d) return;
+  Store.demo=null; Object.assign(ALL,d.saved);
+  ui.viewId=d.viewId&&ALL.views[d.viewId]?d.viewId:null; ui.focus=d.focus; ui.sel=null; ui.treeKey=null;
+  applyView();
+  if(quiet) return;
+  toast('Exemplet är stängt');
+  if(location.hash!=='#start') location.hash='start'; else renderAll(true);
+}
+/* Older versions saved the example into the archive. Remove it quietly. */
+function purgeLegacyDemo(){
+  if(!Store.canEdit||!Store.isAdmin) return;
+  const ids=demoIds(); if(!Object.keys(ALL.persons).some(id=>ids.has(id))) return;
+  for(const p of Object.values(ALL.persons)){ if(ids.has(p.id)) continue; const q=clone(p); let ch=false;
+    for(const k of ['fatherId','motherId']) if(ids.has(q[k])){q[k]='';ch=true;}
+    const sp=(q.spouseIds||[]).filter(x=>!ids.has(x)); if(sp.length!==(q.spouseIds||[]).length){q.spouseIds=sp;ch=true;}
+    if(ch) Store.put(q,{silent:true}); }
+  for(const v of Object.values(ALL.views)){const refs=[...(v.hide||[]),...(v.hideUp||[]),...(v.hideDown||[])]; if(refs.length&&refs.every(id=>ids.has(id))) Store.del('view',v.id,{silent:true});}
+  for(const [kind,col] of [['person','persons'],['place','places'],['source','sources']]) for(const id of Object.keys(ALL[col])) if(ids.has(id)) Store.del(kind,id,{silent:true});
+  if(ui.focus&&ids.has(ui.focus)) ui.focus=null;
 }
 
 /* ============ Boot ============ */
