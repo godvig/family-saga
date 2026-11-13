@@ -42,7 +42,7 @@ const HIST=[
 const ALL={persons:{},places:{},sources:{},views:{}};
 const S={persons:{},places:ALL.places,sources:ALL.sources,views:ALL.views};
 const KIND={person:'persons',place:'places',source:'sources',view:'views'};
-const APP_VERSION='2026-11-13.8';
+const APP_VERSION='2026-11-13.14';
 const ui={nameMode:(()=>{try{return localStorage.getItem('sa-names')||'full';}catch(e){return 'full';}})(),simple:false,view:'trad',focus:null,sel:null,ancGen:3,descGen:2,kinDeg:2,plFilter:'alla',plSort:'namn',plQuery:'',
   tlScope:'alla',tlHist:true,mapScope:'alla',mapRoute:true,placing:null,treeKey:null,viewId:null};
 try{const f=localStorage.getItem('sa-focus'); if(f) ui.focus=f; const v=localStorage.getItem('sa-viewid'); if(v) ui.viewId=v;}catch(e){}
@@ -254,7 +254,7 @@ function personLabel(p){const ls=lifespan(p); return fullName(p)+(ls?' ('+ls.rep
 /* ============ Router ============ */
 const VIEWS={start:renderStart,trad:renderTree,solfjader:renderFan,personer:renderPersons,slaktskap:renderRel,personkort:renderCard,dubbletter:renderDups,tidslinje:renderTimeline,karta:renderMap,kallor:renderSources,import:renderImport};
 const NAVMAP={personkort:'personer',dubbletter:'personer'};
-function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} if(h==='exempel'){ui.pendingDemo=true; location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; followSelection(); const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); {const mb=$('#moreBtn'); if(mb){const inMore=!!document.querySelector('#morePop a.on'); mb.classList.toggle('on',inMore); mb.firstChild.textContent=inMore?document.querySelector('#morePop a.on b').textContent+' ':'Mer '; $('#morePop').classList.remove('open');}} $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
+function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} if(h==='exempel'){ui.pendingDemo=true; location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; followSelection(); if(matchMedia('(max-width:700px)').matches&&!ui.keepSel) ui.sel=null; ui.keepSel=false; /* on phones the person sheet would cover the new tab */ const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); {const mb=$('#moreBtn'); if(mb){const inMore=!!document.querySelector('#morePop a.on'); mb.classList.toggle('on',inMore); mb.querySelector('span').firstChild.textContent=inMore?document.querySelector('#morePop a.on b').textContent:'Mer'; $('#morePop').classList.remove('open');}} $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
 window.addEventListener('hashchange',route);
 let lastView=null;
 function renderAll(force){
@@ -281,6 +281,23 @@ function followSelection(){
   if(ui.view==='slaktskap'){const h=homePerson(); ui.relB=id; if(!ui.relA||ui.relA===id) ui.relA=h&&h.id!==id?h.id:null;}
 }
 function setFocus(id){ui.focus=id; try{localStorage.setItem('sa-focus',id)}catch(e){} }
+/* Phone bottom sheet: tap or drag the handle up to expand, down to shrink or close. */
+/** On phones: shrink the sheet to a small strip so the page behind it (e.g. the map) shows. */
+function sheetMini(){ if(!matchMedia('(max-width:700px)').matches) return; ui.keepSel=true; const pn=$('#panel'); pn.classList.remove('expanded'); pn.classList.add('mini'); pn.scrollTop=0; }
+function bindSheet(pn){
+  const h=pn.querySelector('.sheet-handle'); if(!h) return;
+  const lbl=()=>{h.querySelector('span').textContent=pn.classList.contains('expanded')?'Visa mindre':'Visa mer'; h.setAttribute('aria-label',h.querySelector('span').textContent);};
+  const setExp=on=>{ if(on&&pn.classList.contains('mini')){pn.classList.remove('mini'); lbl(); return;} pn.classList.toggle('expanded',on); if(!on) pn.scrollTop=0; lbl();};
+  lbl();
+  let y0=null, moved=false;
+  h.onpointerdown=e=>{y0=e.clientY; moved=false; h.setPointerCapture(e.pointerId);};
+  h.onpointermove=e=>{if(y0!=null&&Math.abs(e.clientY-y0)>8) moved=true;};
+  h.onpointerup=e=>{ if(y0==null) return; const dy=e.clientY-y0; y0=null;
+    if(!moved) return setExp(!pn.classList.contains('expanded'));
+    if(dy<-30) setExp(true);
+    else if(dy>30){ if(pn.classList.contains('expanded')) setExp(false); else if(!pn.classList.contains('mini')) {pn.classList.add('mini'); lbl();} else select(null); } };
+  const top=pn.querySelector('.ph .top h3'); if(top) top.onclick=()=>{ if(matchMedia('(max-width:700px)').matches&&!pn.classList.contains('expanded')) setExp(true); };
+}
 function select(type,id){ui.sel=id?{type,id}:null; renderAll();}
 function showPerson(id,{focus}={}){if(focus) setFocus(id); select('person',id);}
 /* Clicking a name in the side panel moves the current view to that person. */
@@ -468,8 +485,9 @@ function renderTree(fresh){
   const F=P(ui.focus);
   if(!$('#treeSvg')||fresh){
     v.innerHTML=`<div id="treeWrap"><svg id="treeSvg"><defs><clipPath id="avclip"><rect x="12" y="10" width="60" height="80" rx="6"/></clipPath></defs><g class="vp"></g></svg>
-      <div class="tree-tools">
+      <div class="tree-tools tt-tree">
         <span class="fname" id="tfName"></span>
+        <button class="btn sm mob-only" id="tOpts" aria-expanded="false">Visa ▾</button>
         <span id="tTrees" class="ctl"></span>
         <span class="ctl">Anor <select id="tAnc">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${n===ui.ancGen?'selected':''}>${n}</option>`).join('')}</select></span>
         <span class="ctl">Ättlingar <select id="tDesc">${[0,1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${n===ui.descGen?'selected':''}>${n}</option>`).join('')}</select></span>
@@ -493,6 +511,7 @@ function renderTree(fresh){
     $('#tMe').onclick=()=>{const h=homePerson(); if(!h){toast('Välj vem du är under Inställningar eller med ”Det här är jag” på ditt personkort.',5000);return;} treeGoTo(h.id);};
     $('#tSel').onclick=()=>{const id=ui.sel&&ui.sel.type==='person'?ui.sel.id:ui.focus; treeGoTo(id);};
     $('#tfName').onclick=()=>treeGoTo(ui.focus);
+    $('#tOpts').onclick=e=>{const tt=e.target.closest('.tree-tools'); const o=tt.classList.toggle('open'); e.target.setAttribute('aria-expanded',o); e.target.textContent=o?'Stäng ▴':'Visa ▾';};
     $('#tLock').onclick=()=>{ui.treeLock=!ui.treeLock; toast(ui.treeLock?'Trädet är låst. Klicka på vem du vill och läs – trädet står kvar.':'Trädet är upplåst. Ett klick på en person bygger om trädet kring den personen.',4500); renderTree();};
     $('#tPrint').onclick=()=>printChart($('#treeSvg'),'Släktträd för '+fullName(P(ui.focus)),'klansagan-tree');
     const svg=d3.select('#treeSvg');
@@ -625,7 +644,7 @@ function renderPersons(){
       </div>
       <span class="ctl" style="margin-left:auto">Sortera <select id="pls"><option value="namn">Efternamn</option><option value="fodd">Födelseår</option><option value="senast">Senast ändrad</option></select></span>
     </div>
-    <table class="list"><thead><tr><th>Namn</th><th>Född</th><th>Död</th><th>Yrke</th><th>Underlag</th></tr></thead><tbody>
+    <table class="list m-persons"><thead><tr><th>Namn</th><th>Född</th><th>Död</th><th>Yrke</th><th>Underlag</th></tr></thead><tbody>
     ${list.map(p=>`<tr class="click ${sel===p.id?'sel':''}" data-id="${p.id}"><td><span class="dot" style="background:${sexColor(p)}"></span><b>${esc(fullName(p))}</b></td>
       <td>${esc(p.birthDate||'')}<div class="small muted">${esc(placeName(p.birthPlace))}</div></td>
       <td>${esc(p.deathDate||'')}<div class="small muted">${esc(placeName(p.deathPlace))}</div></td>
@@ -642,12 +661,16 @@ function renderPersons(){
 /* ============ PANEL ============ */
 function renderPanel(){
   const pn=$('#panel');
-  if(!ui.sel){pn.classList.remove('open');pn.innerHTML='';return;}
+  if(!ui.sel){pn.classList.remove('open','expanded','mini');pn.innerHTML='';ui.sheetFor=null;return;}
   pn.classList.add('open');
+  // on phones a newly picked person opens as a small sheet; the same person keeps its size
+  const selKey=ui.sel.type+':'+ui.sel.id; if(ui.sheetFor!==selKey){ui.sheetFor=selKey; pn.classList.remove('expanded','mini'); pn.scrollTop=0;}
   const st=pn.scrollTop;
   if(ui.sel.type==='person') pn.innerHTML=personPanel(P(ui.sel.id));
   else if(ui.sel.type==='place') pn.innerHTML=placePanel(S.places[ui.sel.id]);
   else if(ui.sel.type==='source') pn.innerHTML=sourcePanel(S.sources[ui.sel.id]);
+  pn.insertAdjacentHTML('afterbegin','<button class="sheet-handle" aria-label="Visa mer"><i></i><span></span></button>');
+  bindSheet(pn);
   pn.scrollTop=st;
   bindPanel();
 }
@@ -1002,12 +1025,13 @@ function placePanel(pl){
     <div class="acts"><button class="btn sm" data-pact="map">${pl.lat!=null?'Visa på kartan':'Placera på kartan'}</button>${pl.lat!=null&&ed?'<button class="btn sm" data-pact="move">Flytta markören</button>':''}${ed?'<button class="btn sm" data-pact="edit">Redigera</button><button class="btn sm" data-pact="merge">Slå ihop…</button>':''}</div></div>
     <div class="sec"><h4>Detaljer</h4><dl class="facts"><dt>Församling</dt><dd>${esc(pl.parish||'–')}</dd><dt>Län</dt><dd>${esc(pl.county||'–')}</dd><dt>Land</dt><dd>${esc(pl.country||'–')}</dd><dt>Koordinat</dt><dd>${pl.lat!=null?pl.lat.toFixed(4)+', '+pl.lon.toFixed(4):'<span class="tag warn">saknas</span>'}</dd></dl>
     ${pl.notes?`<p style="white-space:pre-wrap">${esc(pl.notes)}</p>`:''}</div>
-    <div class="sec"><h4>Händelser här (${refs.length})</h4>${refs.map(r=>`<div class="ev"><span class="d">${esc(r.e.date||'–')}</span><span class="w"><b>${esc(r.e.type)}</b> · <a href="#" data-goto="${r.p.id}">${esc(fullName(r.p))}</a></span><span></span></div>`).join('')||'<div class="muted small">Inga.</div>'}</div>
+    <div class="sec"><h4>Händelser här (${refs.length})</h4>${refs.map(r=>`<div class="ev"><span class="d">${esc(r.e.date||'–')}</span><span class="w"><b>${esc(r.e.type)}</b> · <a href="#" data-goto="${r.p.id}">${esc(fullName(r.p))}</a>${r.e.desc?`<div class="small">${esc(r.e.desc)}</div>`:''}${r.e.note&&r.e.note!==r.e.desc?`<div class="small muted">${esc(r.e.note)}</div>`:''}</span><span></span></div>`).join('')||'<div class="muted small">Inga.</div>'}</div>
     ${mediaSection(pl)}`;
 }
 function bindPlacePanel(pl){
   $('#panel').querySelectorAll('[data-pact]').forEach(b=>b.onclick=()=>{
     const a=b.dataset.pact;
+    if(a==='map'||a==='move') sheetMini();
     if(a==='map'){ if(pl.lat==null&&E.canEdit) ui.placing=pl.id; mapState.focusPlace=pl.id; if(ui.view!=='karta') location.hash='karta'; else renderMap(); }
     if(a==='move'){ui.placing=pl.id; if(ui.view!=='karta') location.hash='karta'; else renderMap();}
     if(a==='edit') placeModal(pl);
@@ -1057,7 +1081,7 @@ function renderSources(){
   const unsourced=Object.values(S.persons).filter(p=>!(p.citations||[]).length).length;
   v.innerHTML=`<div class="view-pad"><div class="toolbar"><h2>Källor</h2>${E.canEdit?'<button class="btn primary" id="newSrc">+ Ny källa</button>':''}</div>
     <p class="muted" style="max-width:720px;line-height:1.55;margin-top:-6px">Registrera varje volym eller dokument en gång – t.ex. en husförhörslängd med arkivreferens och bild-ID – och koppla den sedan till de personer den nämner. ${unsourced?`<b style="color:var(--warn)">${unsourced} personer saknar källa.</b> <a href="#personer" onclick="ui.plFilter='kalla'">Visa dem</a>`:''}</p>
-    ${all.length?`<table class="list"><thead><tr><th>Källa</th><th>Typ</th><th>Arkiv / referens</th><th>Hänvisningar</th></tr></thead><tbody>
+    ${all.length?`<table class="list m-sources"><thead><tr><th>Källa</th><th>Typ</th><th>Arkiv / referens</th><th>Hänvisningar</th></tr></thead><tbody>
     ${all.map(s=>`<tr class="click ${sel===s.id?'sel':''}" data-id="${s.id}"><td><b>${esc(s.title)}</b>${s.date?`<div class="small muted">${esc(s.date)}</div>`:''}</td><td>${esc(s.type||'')}</td><td>${esc([s.archive,s.ref].filter(Boolean).join(' · '))}</td><td>${citationsOf(s.id).length}</td></tr>`).join('')}</tbody></table>`
     :`<div class="box"><h3>Inga källor ännu</h3><p>Lägg till din första källa här, eller direkt från en person under ”Källor”.</p></div>`}</div>`;
   v.querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>select('source',tr.dataset.id));
@@ -1127,7 +1151,7 @@ function renderTimeline(){
   // event list
   const list=[]; for(const p of ppl) for(const e of lifeEvents(p)) if(e.date) list.push({p,e,k:dateKey(e.date)});
   list.sort((a,b)=>(a.k??9e9)-(b.k??9e9));
-  $('#tlList').innerHTML=list.length?`<table class="list"><thead><tr><th style="width:120px">Datum</th><th>Händelse</th><th>Person</th><th>Plats</th></tr></thead><tbody>${list.map(r=>`<tr class="click" data-id="${r.p.id}"><td>${esc(r.e.date)}</td><td>${esc(r.e.type)}${r.e.desc?`<div class="small muted">${esc(r.e.desc)}</div>`:''}</td><td><span class="dot" style="background:${sexColor(r.p)}"></span>${esc(fullName(r.p))}</td><td>${esc(placeName(r.e.placeId))}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Inga daterade händelser.</p>';
+  $('#tlList').innerHTML=list.length?`<table class="list m-events"><thead><tr><th style="width:120px">Datum</th><th>Händelse</th><th>Person</th><th>Plats</th></tr></thead><tbody>${list.map(r=>`<tr class="click" data-id="${r.p.id}"><td>${esc(r.e.date)}</td><td>${esc(r.e.type)}${r.e.desc?`<div class="small muted">${esc(r.e.desc)}</div>`:''}</td><td><span class="dot" style="background:${sexColor(r.p)}"></span>${esc(fullName(r.p))}</td><td>${esc(placeName(r.e.placeId))}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Inga daterade händelser.</p>';
   $('#tlList').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>showPerson(tr.dataset.id));
   if(!rows.length) return;
   const box=$('#tlChart'); const W=Math.max(box.clientWidth,760); const H=TOP+rows.length*RH+16;
@@ -1482,7 +1506,7 @@ function applySimple(on,save=true){ui.simple=!!on; document.body.classList.toggl
 try{const q=new URLSearchParams(location.search); if(q.has('enkelt')){applySimple(true,false); document.documentElement.dataset.size='lg';} else applySimple(localStorage.getItem('sa-enkelt')==='1',false);}catch(e){}
 {const b=$('#simpleExit'); if(b) b.onclick=()=>{applySimple(false); ui.treeKey=null; renderAll(true); toast('Alla funktioner visas igen. Enkelt läge hittar du under Inställningar.',4500);};}
 {const b=$('#settingsBtn'); if(b) b.onclick=settingsModal;}
-{const mb=$('#moreBtn'), mp=$('#morePop'); if(mb&&mp){mb.onclick=e=>{e.stopPropagation(); mp.classList.toggle('open'); const r=mb.getBoundingClientRect(); mp.style.left=r.left+'px'; mp.style.top=(r.bottom+6)+'px';}; document.addEventListener('click',()=>mp.classList.remove('open'));}}
+{const mb=$('#moreBtn'), mp=$('#morePop'); if(mb&&mp){mb.onclick=e=>{e.stopPropagation(); mp.classList.toggle('open'); const r=mb.getBoundingClientRect(); if(matchMedia('(max-width:700px)').matches){mp.style.left='';mp.style.top='';} else {mp.style.left=r.left+'px'; mp.style.top=(r.bottom+6)+'px';}}; document.addEventListener('click',()=>mp.classList.remove('open'));}}
 function settingsModal(){
   const h=homePerson(), lg=document.documentElement.dataset.size==='lg';
   const opt=(name,val,cur,label,hint)=>`<label class="sopt"><input type="radio" name="${name}" value="${val}" ${val===cur?'checked':''}><span><b>${label}</b>${hint?`<small>${hint}</small>`:''}</span></label>`;
@@ -1496,6 +1520,7 @@ function settingsModal(){
     <div class="sgroup"><div class="slab">Utseende</div>
       ${opt('th','wood',themeName(),'Trä','Varm träbrun – standard')}${opt('th','light',themeName(),'Ljust','')}${opt('th','dark',themeName(),'Mörkt','')}
       <label class="sopt"><input type="checkbox" id="setLg" ${lg?'checked':''}><span><b>Större text</b></span></label></div>
+    ${PWA.can()?`<div class="sgroup"><div class="slab">App</div><button class="btn" id="setInstall">📲 Installera Klansagan som app</button><div class="hint">Lägger en ikon på hemskärmen eller i programmenyn. Appen öppnas i eget fönster och fungerar även utan internet.</div></div>`:''}
     <div class="sgroup"><div class="slab">Enkelt läge</div>
       <label class="sopt"><input type="checkbox" id="setSimple" ${ui.simple?'checked':''}><span><b>Visa bara det viktigaste</b><small>Stor text och bara Start, Träd och Personer. Bra för den som inte vill krångla – till exempel farmor. Länk som öppnar i enkelt läge: lägg till <code>?enkelt</code> i adressen.</small></span></label></div>
     ${allPersonsDatalist()}
@@ -1507,6 +1532,7 @@ function settingsModal(){
     ov.querySelectorAll('[name=nm]').forEach(i=>i.onchange=()=>{ui.nameMode=i.value; try{localStorage.setItem('sa-names',i.value);}catch(e){} ui.treeKey=null; renderAll(true);});
     ov.querySelectorAll('[name=th]').forEach(i=>i.onchange=()=>{applyTheme(i.value); try{localStorage.setItem('sa-tema',i.value);}catch(e){} mapState.drawn=false; renderAll();});
     q('#setLg').onchange=e=>applySize(e.target.checked);
+    {const ib=q('#setInstall'); if(ib) ib.onclick=()=>{close(); PWA.install();};}
     q('#setSimple').onchange=e=>{applySimple(e.target.checked); if(e.target.checked){applySize(true); q('#setLg').checked=true;} ui.treeKey=null; renderAll(true);};
   });
 }
@@ -1566,7 +1592,7 @@ function renderStart(){
       <h1>${home?'Släkten kring '+esc(fullName(home)):'Ditt släktarkiv'}</h1>
       <p>${all.length} personer${years.length?`, från ${Math.min(...years)} till ${Math.max(...years)}`:''}. ${home&&anc?`Du har hittat ${anc} anor till ${esc(shortName(home))}, ${maxGen} generationer bakåt.`:''}${home&&!anc&&descendantsOf(home.id).size?`${descendantsOf(home.id).size} ättlingar till ${esc(shortName(home))}.`:''}</p>
       <div class="acts"><button class="btn primary" onclick="goHome()">Öppna släktträdet</button>${home?`<button class="btn" onclick="openCard('${home.id}')">Personkort</button>`:''}${ed?'<button class="btn" onclick="openPersonModal()">+ Ny person</button>':''}<button class="btn" onclick="shareModal(activeView())">🔗 Dela med släkten</button>${demoActive()?'<button class="btn" onclick="exitDemo()">Stäng exemplet</button>':''}</div>
-      <div class="hero-links">${demoActive()?'':'<a href="#" onclick="loadDemo();return false">👑 Titta på exemplet Vasaätten</a>'}${ui.simple?'<a href="#" onclick="applySimple(false);renderAll(true);return false">Visa alla funktioner</a>':'<a href="#" onclick="applySimple(true);applySize(true);renderAll(true);return false">Enkelt läge</a>'}<a href="#" onclick="settingsModal();return false">Inställningar</a></div>
+      <div class="hero-links">${demoActive()?'':'<a href="#" onclick="loadDemo();return false">👑 Titta på exemplet Vasaätten</a>'}${ui.simple?'<a href="#" onclick="applySimple(false);renderAll(true);return false">Visa alla funktioner</a>':'<a href="#" onclick="applySimple(true);applySize(true);renderAll(true);return false">Enkelt läge</a>'}<a href="#" onclick="settingsModal();return false">Inställningar</a>${PWA.can()?'<a href="#" onclick="PWA.install();return false">📲 Installera som app</a>':''}</div>
     </div><div class="hero-art">${heroArt()}</div></div>
     ${treesSection()}
     <div class="tiles">${tiles.map(([h,ic,t,d])=>`<a class="tile" href="${h}"><span class="ic">${ic}</span><b>${t}</b><span>${d}</span></a>`).join('')}</div>
@@ -1685,14 +1711,14 @@ let fanZoom=null;
 function renderFan(fresh){
   const v=$('#view');
   if(!Object.keys(S.persons).length){v.innerHTML=emptyState();return;}
-  let F=P(ui.focus); if(!ui.fanGen) ui.fanGen=5; let fanNote='';
+  let F=P(ui.focus); if(!ui.fanGen) ui.fanGen=matchMedia('(max-width:700px)').matches?3:4; let fanNote='';
   if(F&&!F.fatherId&&!F.motherId){let best=null,bn=0; for(const p of Object.values(S.persons)){const n=ancestorsOf(p.id).size; if(n>bn){bn=n;best=p;}} if(best){fanNote=`${esc(shortName(F))} har inga registrerade föräldrar – visar ${esc(fullName(best))}, som har flest kända anor.`; F=best;}}
   if(!$('#fanSvg')||fresh){
     v.innerHTML=`<div id="fanWrap"><svg id="fanSvg"><g class="vp"></g></svg>
       <div class="tree-tools"><span class="fname" id="fanName"></span>
         <span class="ctl">Generationer <select id="fanGen">${[3,4,5,6,7,8,9,10].map(n=>`<option ${n===ui.fanGen?'selected':''}>${n}</option>`).join('')}</select></span>
-        <button class="btn sm" id="fanFit">Centrera</button><button class="btn sm" id="fanPrint">⎙ Skriv ut / spara</button></div>
-      <div class="fan-legend" id="fanLegend"></div><div id="fanNote" class="banner" style="top:auto;bottom:70px;display:none;font-size:13px;max-width:80%"></div></div>`;
+        <button class="btn sm" id="fanFit">Centrera</button><button class="btn sm" id="fanPrint">⎙ Skriv ut / spara</button><div id="fanNote" class="fan-note" style="display:none"></div></div>
+      <div class="fan-legend" id="fanLegend"></div></div>`;
     $('#fanGen').onchange=e=>{ui.fanGen=+e.target.value; ui.fanKey=null; renderFan();};
     $('#fanFit').onclick=()=>{ui.fanKey=null; renderFan();};
     $('#fanPrint').onclick=()=>printChart($('#fanSvg'),'Solfjäder för '+$('#fanName').textContent,'klansagan-fan');
@@ -1751,7 +1777,9 @@ function renderFan(fresh){
   // fit
   const key=F.id+'|'+N;
   if(ui.fanKey!==key){ui.fanKey=key; const Wd=$('#fanSvg').clientWidth,Hd=$('#fanSvg').clientHeight, R=rOut(N);
-    const k=Math.min(1.4,(Wd-40)/(2*R+20),(Hd-90)/(R+R0+20)); svg.call(fanZoom.transform,d3.zoomIdentity.translate(Wd/2,(Hd+R-R0)/2+30).scale(k));}
+    const tb=document.querySelector('#fanWrap .tree-tools'), top=tb?tb.getBoundingClientRect().bottom-$('#fanSvg').getBoundingClientRect().top+12:60, avail=Hd-top-12;
+    const k=Math.min(1.6,(Wd-24)/(2*R+20),avail/(R+R0+24)); const cy=top+(avail-(R+R0)*k)/2+R*k;
+    svg.call(fanZoom.transform,d3.zoomIdentity.translate(Wd/2,cy).scale(k));}
 }
 
 /* ============ PERSON CARD ============ */
@@ -2257,7 +2285,9 @@ function updateDemoBar(){const b=$('#demoBar'); if(b) b.classList.toggle('on',St
 /* The example family lives only in memory: it is never saved, so it can't
    end up in someone's own archive or in a shared tree. */
 function loadDemo(){
-  if(Store.demo){ if(location.hash!=='#trad') location.hash='trad'; return; }
+  /* stay on the page you're on; from the start or import page, go to the tree */
+  const stay=!['start','import'].includes(ui.view)&&VIEWS[ui.view];
+  if(Store.demo){ if(!stay&&location.hash!=='#trad') location.hash='trad'; return; }
   const {places,sources,persons}=demoData();
   Store.demo={saved:{persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views},focus:ui.focus,viewId:ui.viewId};
   const m=a=>Object.fromEntries(a.map(o=>[o.id,clone(o)]));
@@ -2265,7 +2295,8 @@ function loadDemo(){
   ui.viewId=null; ui.focus='p_gustav1'; ui.ancGen=2; ui.descGen=3; ui.treeKey=null; ui.sel=null;
   applyView();
   toast('Det här är ett exempel. Inget sparas – dina egna uppgifter ligger kvar orörda.',5000);
-  if(location.hash!=='#trad') location.hash='trad'; else renderAll(true);
+  ui.fanKey=null; mapState.drawn=false;
+  if(stay||location.hash==='#trad') renderAll(true); else location.hash='trad';
 }
 function exitDemo(quiet){
   const d=Store.demo; if(!d) return;
@@ -2483,4 +2514,18 @@ function shareTreeModal(){
   });
 }
 {const sb=$('#shareBtn'); if(sb) sb.onclick=shareTreeModal; const st=$('#status'); if(st) st.onclick=()=>{ if(Share.newer) Share.pull(); else if(Share.enabled()) shareTreeModal(); };}
+/* ============ Install as an app (PWA) ============ */
+const PWA={prompt:null,
+  standalone:()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true,
+  ios:()=>/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1),
+  can(){return !this.standalone()&&(!!this.prompt||this.ios());},
+  async install(){
+    if(this.prompt){this.prompt.prompt(); const r=await this.prompt.userChoice.catch(()=>null); this.prompt=null; if(r&&r.outcome==='accepted') toast('Klansagan finns nu på din hemskärm.'); renderAll(); return;}
+    if(this.ios()) modal(`<h3>Lägg Klansagan på hemskärmen</h3><ol class="ios-steps"><li>Tryck på <b>Dela</b>-knappen <span class="ios-share">⬆︎</span> längst ner i Safari.</li><li>Välj <b>Lägg till på hemskärmen</b>.</li><li>Tryck <b>Lägg till</b>. Nu öppnas Klansagan som en egen app.</li></ol><div class="foot"><button class="btn primary" data-x>Klar</button></div>`,(ov,close)=>{ov.querySelector('[data-x]').onclick=close;});
+  }};
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault(); PWA.prompt=e; if(Store.loaded) renderAll();});
+window.addEventListener('appinstalled',()=>{PWA.prompt=null;});
+if('serviceWorker' in navigator&&location.protocol==='https:'&&window.top===window&&Store.mode!=='db'&&!/claude\.(ai|site)|claudeusercontent/.test(location.hostname)){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('Service worker',e)));
+}
 Store.init();
