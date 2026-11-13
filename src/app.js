@@ -42,7 +42,7 @@ const HIST=[
 const ALL={persons:{},places:{},sources:{},views:{}};
 const S={persons:{},places:ALL.places,sources:ALL.sources,views:ALL.views};
 const KIND={person:'persons',place:'places',source:'sources',view:'views'};
-const APP_VERSION='2026-11-13.19';
+const APP_VERSION='2026-11-13.23';
 const ui={nameMode:(()=>{try{return localStorage.getItem('sa-names')||'full';}catch(e){return 'full';}})(),simple:false,view:'trad',focus:null,sel:null,ancGen:3,descGen:2,kinDeg:2,plFilter:'alla',plSort:'namn',plQuery:'',
   tlScope:'alla',tlHist:true,mapScope:'alla',mapRoute:true,placing:null,treeKey:null,viewId:null};
 try{const f=localStorage.getItem('sa-focus'); if(f) ui.focus=f; const v=localStorage.getItem('sa-viewid'); if(v) ui.viewId=v;}catch(e){}
@@ -60,6 +60,58 @@ function withAll(fn){const saved=S.persons; S.persons=ALL.persons; try{return fn
 function viewCounts(v){return computeHidden(v).size;}
 
 /* ============ Store ============ */
+/* ============ Undo / redo ============
+   Every write through Store.put/del/putMany is recorded. Writes that happen close together
+   (one click that touches several people, an upload and its face framing) become one action. */
+const Hist={h:KinCore.createHistory({limit:60}), _t:null, _hold:450, applying:false,
+  rec(kind,id,before,after){
+    if(this.applying) return;
+    if(!Store.canEdit) return;
+    const strip=o=>o?JSON.stringify(Object.assign({},o,{updatedAt:0,updatedBy:0})):'';
+    if(strip(before)===strip(after)) return;
+    this.h.record({kind,id,before:before?clone(before):null,after:after?clone(after):null},this._next||undefined);
+    clearTimeout(this._t); this._t=setTimeout(()=>{this.h.close(); this._hold=450; this._next=null; updateUndoBtns();},this._hold);
+    updateUndoBtns();
+  },
+  /** Name the current action; hold keeps it open longer for slow multi-step work. */
+  label(l,hold){ if(hold) this._hold=hold; if(this.h.isOpen()) this.h.label(l); this._next=l;
+    clearTimeout(this._lt); this._lt=setTimeout(()=>{ if(!this.h.isOpen()) this._next=null; },hold||450); },
+  clear(){ this.h.clear(); updateUndoBtns(); },
+  describe(g){ if(!g) return '';
+    if(g.label) return g.label;
+    const ch=g.changes, nm=d=>d?(d.kind==='person'?fullName(d):d.kind==='source'?(d.title||'källa'):(d.name||'')):'';
+    if(ch.length===1){const c=ch[0], d=c.after||c.before; return (c.before?c.after?'Ändring av ':'Borttagning av ':'Ny: ')+nm(d);}
+    const ppl=ch.filter(c=>c.kind==='person');
+    const verb=ppl.every(c=>!c.before)?'Ny: ':ppl.every(c=>!c.after)?'Borttagning av ':'Ändring av ';
+    return ppl.length?`${verb}${nm(ppl[0].after||ppl[0].before)}${ppl.length>1?` och ${ppl.length-1} till`:''}`:`${ch.length} ändringar`;
+  },
+  async run(dir){
+    if(!Store.canEdit) return;
+    clearTimeout(this._t); this.h.close();
+    const r=dir<0?this.h.undo():this.h.redo(); if(!r){toast(dir<0?'Inget att ångra.':'Inget att göra om.'); return;}
+    this.applying=true;
+    try{ for(const a of r.apply){ if(a.doc) await Store.put(a.doc,{silent:true,nohist:true}); else if(ALL[KIND[a.kind]][a.id]) await Store.del(a.kind,a.id,{silent:true,nohist:true}); } }
+    finally{ this.applying=false; }
+    if(ui.sel&&ui.sel.type==='person'&&!P(ui.sel.id)) ui.sel=null;
+    renderAll(); updateUndoBtns();
+    const what=this.describe(r.group);
+    toast((dir<0?'Ångrade: ':'Gjorde om: ')+what,5000,{label:dir<0?'Gör om':'Ångra',fn:()=>this.run(-dir)});
+  },
+};
+function updateUndoBtns(){
+  const u=$('#undoBtn'), r=$('#redoBtn'); if(!u||!r) return;
+  const on=Store.canEdit&&Store.loaded; u.hidden=r.hidden=!on;
+  const pu=Hist.h.peekUndo(), pr=Hist.h.peekRedo();
+  u.disabled=!pu; r.disabled=!pr;
+  u.title=pu?'Ångra: '+Hist.describe(pu)+' (Ctrl+Z)':'Inget att ångra'; r.title=pr?'Gör om: '+Hist.describe(pr)+' (Ctrl+Shift+Z)':'Inget att göra om';
+}
+document.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.altKey) return;
+  const k=e.key.toLowerCase(); if(k!=='z'&&k!=='y') return;
+  const t=/** @type {HTMLElement} */(e.target); if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return; // the field's own undo
+  if(document.querySelector('.modal-ov,.ov')) return;
+  e.preventDefault(); Hist.run(k==='y'||e.shiftKey?1:-1);
+});
 const Store={
   mode:'loading',col:null,demo:null,canEdit:true,isAdmin:true,myId:null,user:null,assets:null,downloads:null,chains:{},loaded:false,
   async init(){
@@ -85,6 +137,8 @@ const Store={
       const flush=()=>{ if(!this._dirty) return; try{localStorage.setItem('klansagan-unsaved',JSON.stringify({k:Share.lsKey(),data:{persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views}}));}catch(e){} this.saveNow(); };
       addEventListener('pagehide',flush); document.addEventListener('visibilitychange',()=>{ if(document.hidden) flush(); });
       Share.updateStatus(); Share.startPolling();
+      setTimeout(()=>Backup.remind(),5000);
+      setTimeout(()=>Unpub.nudge((n,pl)=>`Välkommen tillbaka! Du har ${n} från förra gången som inte är publicerad${pl} än.`),1500);
       renderAll();
       migrateInline().then(ch=>{ if(ch){ Share.updateStatus(); renderAll(); } return backfillThumbs(); });
     }
@@ -106,7 +160,7 @@ const Store={
      If IndexedDB is unavailable (some private modes), localStorage is still used. */
   backend:'idb',
   async loadLocal(){
-    const k=Share.lsKey(); ALL.persons={};ALL.places={};ALL.sources={};ALL.views={};
+    const k=Share.lsKey(); ALL.persons={};ALL.places={};ALL.sources={};ALL.views={}; Hist.clear();
     const use=o=>{ if(!o) return; ALL.persons=o.persons||{}; ALL.places=o.places||{}; ALL.sources=o.sources||{}; ALL.views=o.views||{}; };
     let o=null;
     if(this.backend==='idb' && typeof indexedDB!=='undefined'){
@@ -154,8 +208,9 @@ const Store={
     }
   },
   stamp(o){o.updatedAt=new Date().toISOString(); if(this.myId) o.updatedBy=this.myId; return o;},
-  put(obj,{silent}={}){
+  put(obj,{silent,nohist}={}){
     obj=this.stamp(clone(obj));
+    if(!nohist) Hist.rec(obj.kind,obj.id,ALL[KIND[obj.kind]][obj.id],obj);
     ALL[KIND[obj.kind]][obj.id]=obj; applyView();
     if(!silent) renderAll();
     if(this.demo) return Promise.resolve();
@@ -167,7 +222,8 @@ const Store={
       });
     } else {this.saveLocal(); return Promise.resolve();}
   },
-  del(kind,id,{silent}={}){
+  del(kind,id,{silent,nohist}={}){
+    if(!nohist) Hist.rec(kind,id,ALL[KIND[kind]][id],null);
     delete ALL[KIND[kind]][id]; applyView();
     if(!silent) renderAll();
     if(this.demo) return Promise.resolve();
@@ -176,7 +232,7 @@ const Store={
   },
   async putMany(objs,onProgress){
     let done=0; const queue=objs.slice();
-    for(const o of queue){this.stamp(o); ALL[KIND[o.kind]][o.id]=clone(o);} applyView();
+    for(const o of queue){this.stamp(o); Hist.rec(o.kind,o.id,ALL[KIND[o.kind]][o.id],o); ALL[KIND[o.kind]][o.id]=clone(o);} applyView();
     if(this.demo){onProgress&&onProgress(1); renderAll(); return;}
     if(this.mode!=='db'){this.saveLocal(); onProgress&&onProgress(1); renderAll(); return;}
     renderAll();
@@ -327,7 +383,7 @@ function renderAll(force){
   if(ui.sel&&ui.sel.type==='person'&&!P(ui.sel.id)) ui.sel=null;
   if(ui.sel&&ui.sel.type==='place'&&!S.places[ui.sel.id]) ui.sel=null;
   if(ui.sel&&ui.sel.type==='source'&&!S.sources[ui.sel.id]) ui.sel=null;
-  renderPanel(); updateDemoBar(); updateViewBtn();
+  renderPanel(); updateDemoBar(); updateViewBtn(); updateUndoBtns();
   try{ VIEWS[ui.view](force||lastView!==ui.view); lastView=ui.view; }
   catch(e){ console.error(e); lastView=null;
     $('#view').innerHTML=`<div class="empty"><h2>Något gick fel på den här sidan</h2><p>Dina uppgifter är orörda. Prova att ladda om sidan. Om felet kommer tillbaka: skicka texten här nedanför till den som sköter sidan.</p><p class="muted small" style="font-family:monospace">${esc(APP_VERSION)} · ${esc(ui.view)} · ${esc(String(e&&e.message||e))}</p><p><button class="btn primary" onclick="location.reload()">Ladda om</button></p></div>`; }
@@ -676,7 +732,7 @@ function renderTree(fresh){
       ph.append('text').attr('class','ini').attr('x',PX+PW/2).attr('y',PY+PH/2+2).attr('text-anchor','middle').text(initials(p));
       if(Store.canEdit){ph.append('text').attr('class','add').attr('x',PX+PW/2).attr('y',PY+PH-9).attr('text-anchor','middle').text('+ bild');
         ph.append('title').text('Lägg till en bild');
-        ph.on('click',ev=>{ev.stopPropagation(); select('person',p.id); setTimeout(()=>{const i=$('#uplAv'); if(i) i.click();},30);});}}
+        ph.on('click',ev=>{ev.stopPropagation(); pickImageFor(p.id);});}}
     const nm=fullName(p), words=nm.split(' '), lines=['']; for(const w of words){const cur=lines[lines.length-1]; if(cur&&(cur+' '+w).length>maxc){if(lines.length===2){lines[1]+=' '+w; continue;} lines.push(w);} else lines[lines.length-1]=cur?cur+' '+w:w;}
     const L=lines.map(l=>l.length>maxc+1?l.slice(0,maxc)+'…':l);
     const t0=el.append('text').attr('class','nm').attr('x',tx).attr('y',Y0); L.forEach((l,i)=>t0.append('tspan').attr('x',tx).attr('dy',i?LH:0).text(l)); t0.append('title').text(nm);
@@ -982,7 +1038,7 @@ function bindPersonPanel(p){
     if(act==='hide') hideModal(p);
     if(act==='rel'){ui.relB=p.id; if(!ui.relA||ui.relA===p.id) ui.relA=(homePerson()&&homePerson().id!==p.id)?homePerson().id:(ui.focus!==p.id?ui.focus:null); location.hash='slaktskap';}
     if(act==='home'&&!p.home) setHome(p.id);
-    if(act==='delp') confirmBox(`Ta bort ${fullName(p)}?`,'Personen tas bort och kopplingar till familjemedlemmar lossas. Det går inte att ångra.','Ta bort',()=>deletePerson(p.id));
+    if(act==='delp') confirmBox(`Ta bort ${fullName(p)}?`,'Personen tas bort och kopplingar till familjemedlemmar lossas. Du kan ångra det efteråt med ↶ eller Ctrl+Z.','Ta bort',()=>deletePerson(p.id));
     if(act==='addev') eventForm(p,null);
     if(act==='addcite') citeForm(p);
     if(act==='link') linkModal(p.id);
@@ -1046,7 +1102,44 @@ function shrinkImage(file,max=900,q=.8){
     img.onload=()=>{const k=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg',q));};
     img.onerror=()=>{URL.revokeObjectURL(url); rej(new Error('Kunde inte läsa bilden'));}; img.src=url;});
 }
+/* ============ Photos straight onto a person ============
+   Click the empty photo on a card (on a phone: take a picture or pick one), drop image
+   files on a card or the person panel, or paste an image while a person is selected. */
+function pickImageFor(pid){
+  // created and clicked inside the click handler itself, so phones allow it and offer the camera
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
+  inp.onchange=()=>{ if(inp.files&&inp.files.length) photoTo(pid,inp.files); };
+  inp.click();
+}
+async function photoTo(pid,files){
+  const imgs=[...files].filter(f=>/^image\//.test(f.type)); const p=P(pid);
+  if(!p||!Store.canEdit) return;
+  if(!imgs.length){toast('Det där var ingen bild. Släpp en bildfil (jpg, png, heic…).'); return;}
+  select('person',pid); const had=!!avatarUrl(p);
+  await uploadMedia(imgs,{profile:!had});
+  if(had) toast(`Bilden lades till bland ${genitive(shortName(p))} bilder.`,4000); // a new profile photo shows itself (and its framing toast)
+}
+{ let dragDepth=0;
+  const hasFiles=e=>e.dataTransfer&&[...(e.dataTransfer.types||[])].includes('Files');
+  const target=e=>{const t=/** @type {Element} */(e.target); if(!t||!t.closest) return null;
+    const c=t.closest('g.card[data-k]'); if(c&&!c.getAttribute('data-k').startsWith('g:')) return {pid:c.getAttribute('data-k'),el:c};
+    if(t.closest('#panel')&&ui.sel&&ui.sel.type==='person') return {pid:ui.sel.id,el:$('#panel')};
+    const pc=t.closest('.pc'); if(pc&&ui.view==='personkort'&&ui.focus) return {pid:ui.focus,el:pc};
+    return null;};
+  let lit=null; const light=el=>{ if(lit===el) return; if(lit) lit.classList.remove('drop-on'); lit=el; if(el) el.classList.add('drop-on'); };
+  document.addEventListener('dragenter',e=>{ if(!hasFiles(e)||!Store.canEdit) return; dragDepth++; document.body.classList.add('dragging-files'); });
+  document.addEventListener('dragleave',()=>{ if(--dragDepth<=0){dragDepth=0; document.body.classList.remove('dragging-files'); light(null);} });
+  document.addEventListener('dragover',e=>{ if(!hasFiles(e)) return; e.preventDefault(); const t=Store.canEdit?target(e):null; e.dataTransfer.dropEffect=t?'copy':'none'; light(t&&t.el); });
+  document.addEventListener('drop',e=>{ if(!hasFiles(e)) return; e.preventDefault(); dragDepth=0; document.body.classList.remove('dragging-files');
+    const t=Store.canEdit?target(e):null; light(null);
+    if(t) photoTo(t.pid,e.dataTransfer.files); else if(Store.canEdit) toast('Släpp bilden på en person i trädet, eller i personens panel.'); });
+  document.addEventListener('paste',e=>{ const tg=/** @type {HTMLElement} */(e.target); if(tg&&/^(INPUT|TEXTAREA)$/.test(tg.tagName)) return;
+    if(!Store.canEdit||!ui.sel||ui.sel.type!=='person') return;
+    const files=[...(e.clipboardData&&e.clipboardData.files||[])].filter(f=>/^image\//.test(f.type)); if(!files.length) return;
+    e.preventDefault(); photoTo(ui.sel.id,files); });
+}
 async function uploadMedia(files,{profile}={}){
+  Hist.label(files.length>1?`Uppladdning av ${files.length} filer`:'Uppladdning av '+(files[0]&&files[0].name||'bild'),6000);
   files=[...files]; if(!files.length) return;
   const prog=$('#uplprog'); if(prog) prog.innerHTML=`<div class="small muted">Laddar upp ${files.length} fil(er)…</div><div class="progress"><i></i></div>`;
   const added=[]; let i=0;
@@ -1148,6 +1241,7 @@ function openLightbox(o,i){
   }
 }
 async function deletePerson(id){
+  {const d=P(id); if(d) Hist.label('Borttagning av '+fullName(d),1500);}
   const others=Object.values(ALL.persons).filter(x=>x.id!==id&&(x.fatherId===id||x.motherId===id||(x.spouseIds||[]).includes(id)||(x.events||[]).some(e=>e.withId===id)));
   for(const o of others){const q=clone(o); if(q.fatherId===id) q.fatherId=''; if(q.motherId===id) q.motherId=''; q.spouseIds=(q.spouseIds||[]).filter(x=>x!==id); (q.events||[]).forEach(e=>{if(e.withId===id) e.withId='';}); Store.put(q,{silent:true});}
   if(ui.focus===id) ui.focus=null;
@@ -1523,6 +1617,7 @@ const imp={headers:[],rows:[],map:{},sheets:null,wb:null,skipDup:true,createMiss
 function renderImport(){
   const v=$('#view');
   v.innerHTML=`<div class="view-pad"><div class="toolbar"><h2>Import &amp; export</h2></div>
+    ${Store.mode!=='db'&&!Store.demo&&Object.keys(ALL.persons).length?Backup.box():''}
     ${E.canEdit?`<div class="box"><h3>1. Läs in din släktlista</h3>
       <p>Välj en Excel-fil (.xlsx, .xls) eller CSV – eller kopiera cellerna i Excel och klistra in dem nedan. En rad per person. Föräldrar kan anges med namn eller med personens id-nummer i listan.</p>
       <div class="drop" id="drop"><b>Släpp filen här</b> eller klicka för att välja<input type="file" id="impFile" accept=".xlsx,.xls,.csv,.tsv,.txt,.ods" hidden></div>
@@ -1532,8 +1627,8 @@ function renderImport(){
       <div style="margin-top:12px" class="small muted">Osäker på formatet? <a href="#" id="tplDl">Ladda ner en mall</a> med rätt kolumner.</div>
     </div>
     <div id="impStep2"></div>`:''}
-    <div class="box"><h3>Exportera &amp; säkerhetskopiera</h3>
-      <p>Spara en kopia av hela arkivet. GEDCOM är standardformatet som MyHeritage, Ancestry, Geni, Disgen och de flesta släktprogram kan läsa.</p>
+    <div class="box"><h3>Exportera</h3>
+      <p>GEDCOM är standardformatet som MyHeritage, Ancestry, Geni, Disgen och de flesta släktprogram kan läsa.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" data-exp="json">Säkerhetskopia (.json)</button>
         <button class="btn" data-exp="ged">GEDCOM</button>
@@ -1544,7 +1639,8 @@ function renderImport(){
     <div class="box"><h3>Övrigt</h3><div style="display:flex;gap:8px;flex-wrap:wrap">${Object.keys(S.persons).length?'':'<button class="btn" onclick="loadDemo()">Ladda Vasaätten som exempel</button>'}<button class="btn danger" id="wipe">Töm hela arkivet…</button></div>
       <p class="small muted" style="margin-top:10px">${Store.mode==='db'?'Ditt arkiv sparas i molnet och syns bara för dig tills du väljer att dela sidan. Delar du den kan andra läsa, men bara du och de du gör till redigerare kan ändra.':'Sidan körs utanför claude.ai, så allt sparas bara i den här webbläsaren. Exportera regelbundet!'}</p></div>`:''}
   </div>`;
-  v.querySelectorAll('[data-exp]').forEach(b=>b.onclick=()=>doExport(b.dataset.exp));
+  v.querySelectorAll('[data-exp]').forEach(b=>b.onclick=()=>doExport(b.dataset.exp).then(()=>{ if(b.dataset.exp==='json') renderImport(true); }));
+  {const bb=$('#bkSave'); if(bb) bb.onclick=async()=>{bb.disabled=true; bb.textContent='Sparar…'; try{await Backup.save();}finally{renderImport(true);}};}
   if(!E.canEdit) return;
   const drop=$('#drop'),fi=$('#impFile');
   drop.onclick=()=>fi.click();
@@ -1554,7 +1650,7 @@ function renderImport(){
   fi.onchange=()=>fi.files[0]&&readImportFile(fi.files[0]);
   $('#impPasteBtn').onclick=()=>{const t=$('#impPaste').value; if(!t.trim()) return; setImportRows(parseDelimited(t));};
   $('#tplDl').onclick=e=>{e.preventDefault(); saveFile('slaktsagan-import-template.csv','\ufeff'+['Id;Förnamn;Efternamn;Kön;Född;Födelseort;Död;Dödsort;Yrke;Far;Mor;Make/maka;Källa;Anteckningar','1;Erik;Larsson;M;1798-03-02;Rättvik;1861-11-20;Rättvik;Bonde;;;2;Rättvik C:9;','2;Kerstin;Olsdotter;K;1801;Leksand;1870;Rättvik;;;;1;;','3;Lars;Ersson;M;1826-05-14;Rättvik;1889;Rättvik;Bonde;1;2;;Rättvik AI:15 sid 45;'].join('\r\n'));};
-  if($('#restore')) $('#restore').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{let o; try{o=JSON.parse(t);}catch(x){toast('Filen är inte giltig JSON');return;} const objs=[...Object.values(o.persons||{}),...Object.values(o.places||{}),...Object.values(o.sources||{}),...Object.values(o.views||{})].filter(x=>x&&x.id&&KIND[x.kind]); if(!objs.length){toast('Hittade inga poster i filen');return;} confirmBox('Återställ '+objs.length+' poster?','Poster med samma id ersätts av versionen i filen.','Återställ',()=>Store.putMany(objs).then(()=>toast('Återställt ✓')));});};
+  if($('#restore')) $('#restore').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{let o; try{o=JSON.parse(t);}catch(x){toast('Filen är inte giltig JSON');return;} const objs=[...Object.values(o.persons||{}),...Object.values(o.places||{}),...Object.values(o.sources||{}),...Object.values(o.views||{})].filter(x=>x&&x.id&&KIND[x.kind]); if(!objs.length){toast('Hittade inga poster i filen');return;} confirmBox('Återställ '+objs.length+' poster?','Poster med samma id ersätts av versionen i filen.','Återställ',()=>(Hist.label('Återställning från säkerhetskopia',3000), Store.putMany(objs).then(()=>toast('Återställt ✓'))));});};
   if($('#wipe')) $('#wipe').onclick=()=>modal(`<h3>Töm hela arkivet?</h3><p>Alla ${Object.keys(ALL.persons).length} personer, ${Object.keys(S.sources).length} källor och ${Object.keys(S.places).length} platser tas bort. Exportera en säkerhetskopia först! Skriv <b>TÖM</b> för att bekräfta.</p><input class="t" id="wipeIn"><div class="foot" style="margin-top:12px"><button class="btn" data-x>Avbryt</button><button class="btn primary" style="background:var(--err);border-color:var(--err)" data-ok>Töm arkivet</button></div>`,(ov,close)=>{ov.querySelector('[data-x]').onclick=close; ov.querySelector('[data-ok]').onclick=async()=>{if(ov.querySelector('#wipeIn').value.trim().toUpperCase()!=='TÖM')return; close(); ui.sel=null; ui.focus=null; const all=[...Object.values(ALL.persons),...Object.values(ALL.places),...Object.values(ALL.sources),...Object.values(ALL.views)]; for(const o of all) Store.del(o.kind,o.id,{silent:true}); renderAll(); toast('Arkivet är tömt');};});
   if(imp.rows.length) renderImportStep2();
 }
@@ -1665,6 +1761,7 @@ async function runImport(){
   if(!created.length){toast(skipped?'Alla '+skipped+' personer fanns redan':'Inga personer att importera');return;}
   $('#impGo').disabled=true;
   const prog=$('#impProg'); prog.innerHTML=`<div class="progress"><i></i></div>`;
+  Hist.label(`Import av ${objs.filter(o=>o.kind==='person').length} personer`,3000);
   await Store.putMany(objs,f=>{const b=prog.querySelector('i'); if(b) b.style.width=Math.round(f*100)+'%';});
   if(!ui.focus||!P(ui.focus)){const oldest=created.filter(p=>p.birthDate).sort((a,b)=>dateKey(b.birthDate)-dateKey(a.birthDate))[0]; if(oldest) setFocus(oldest.id);}
   imp.rows=[]; imp.raw=null;
@@ -1681,7 +1778,7 @@ async function doExport0(kind){
   const stamp=new Date().toISOString().slice(0,10);
   if(kind==='json'){ const inl=async col=>{const o=clone(ALL[col]); for(const d of Object.values(o)) {const map={}; for(const m of d.media||[]){ if(blobId(m)){const old=m.url; m.url=await blobUrl(m); map[old]=m.url;} delete m.thumb; } for(const m of d.media||[]) if(m.forImg&&map[m.forImg]) m.forImg=map[m.forImg];} return o;};
     const [persons,places,sources]=await Promise.all([inl('persons'),inl('places'),inl('sources')]);
-    saveFile(`slaktsagan-${stamp}.json`,JSON.stringify({app:'Släktsagan',version:1,exported:new Date().toISOString(),persons,places,sources,views:ALL.views},null,1)); }
+    saveFile(`slaktsagan-${stamp}.json`,JSON.stringify({app:'Släktsagan',version:1,exported:new Date().toISOString(),persons,places,sources,views:ALL.views},null,1)); Backup.mark(); }
   if(kind==='csv'){
     const ids={}; Object.values(S.persons).forEach((p,i)=>ids[p.id]=i+1);
     const c=v=>{v=String(v??''); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
@@ -1738,6 +1835,7 @@ function applySimple(on,save=true){ui.simple=!!on; document.body.classList.toggl
 try{const q=new URLSearchParams(location.search); if(q.has('enkelt')){applySimple(true,false); document.documentElement.dataset.size='lg';} else applySimple(localStorage.getItem('sa-enkelt')==='1',false);}catch(e){}
 {const b=$('#simpleExit'); if(b) b.onclick=()=>{applySimple(false); ui.treeKey=null; renderAll(true); toast('Alla funktioner visas igen. Enkelt läge hittar du under Inställningar.',4500);};}
 {const b=$('#settingsBtn'); if(b) b.onclick=settingsModal;}
+{const u=$('#undoBtn'), r=$('#redoBtn'); if(u) u.onclick=()=>Hist.run(-1); if(r) r.onclick=()=>Hist.run(1);}
 {const mb=$('#moreBtn'), mp=$('#morePop'); if(mb&&mp){mb.onclick=e=>{e.stopPropagation(); mp.classList.toggle('open'); const r=mb.getBoundingClientRect(); if(matchMedia('(max-width:700px)').matches){mp.style.left='';mp.style.top='';} else {mp.style.left=r.left+'px'; mp.style.top=(r.bottom+6)+'px';}}; document.addEventListener('click',()=>mp.classList.remove('open'));}}
 function settingsModal(){
   const h=homePerson(), lg=document.documentElement.dataset.size==='lg';
@@ -2120,6 +2218,7 @@ function renderDups(){
 }
 async function mergePersons(keepId,dropId){
   const k=clone(P(keepId)), d=P(dropId); if(!k||!d) return;
+  Hist.label('Sammanslagning av '+fullName(d)+' med '+fullName(k),1500);
   for(const f of ['given','callName','surname','sex','birthDate','birthPlace','deathDate','deathPlace','occupation','fatherId','motherId']) if(!k[f]&&d[f]) k[f]=d[f];
   if(d.notes&&d.notes!==k.notes) k.notes=[k.notes,d.notes].filter(Boolean).join('\n\n');
   const evKey=e=>e.type+'|'+(e.date||'')+'|'+(e.placeId||'');
@@ -2538,7 +2637,7 @@ function loadDemo(){
   const {places,sources,persons}=demoData();
   Store.demo={saved:{persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views},focus:ui.focus,viewId:ui.viewId};
   const m=a=>Object.fromEntries(a.map(o=>[o.id,clone(o)]));
-  ALL.persons=m(persons); ALL.places=m(places); ALL.sources=m(sources); ALL.views={};
+  ALL.persons=m(persons); ALL.places=m(places); ALL.sources=m(sources); ALL.views={}; Hist.clear();
   ui.viewId=null; ui.focus='p_gustav1'; ui.ancGen=2; ui.descGen=3; ui.treeKey=null; ui.sel=null;
   applyView();
   toast('Det här är ett exempel. Inget sparas – dina egna uppgifter ligger kvar orörda.',5000);
@@ -2547,7 +2646,7 @@ function loadDemo(){
 }
 function exitDemo(quiet){
   const d=Store.demo; if(!d) return;
-  Store.demo=null; Object.assign(ALL,d.saved);
+  Store.demo=null; Object.assign(ALL,d.saved); Hist.clear();
   ui.viewId=d.viewId&&ALL.views[d.viewId]?d.viewId:null; ui.focus=d.focus; ui.sel=null; ui.treeKey=null;
   applyView();
   if(quiet) return;
@@ -2561,9 +2660,9 @@ function purgeLegacyDemo(){
   for(const p of Object.values(ALL.persons)){ if(ids.has(p.id)) continue; const q=clone(p); let ch=false;
     for(const k of ['fatherId','motherId']) if(ids.has(q[k])){q[k]='';ch=true;}
     const sp=(q.spouseIds||[]).filter(x=>!ids.has(x)); if(sp.length!==(q.spouseIds||[]).length){q.spouseIds=sp;ch=true;}
-    if(ch) Store.put(q,{silent:true}); }
-  for(const v of Object.values(ALL.views)){const refs=[...(v.hide||[]),...(v.hideUp||[]),...(v.hideDown||[])]; if(refs.length&&refs.every(id=>ids.has(id))) Store.del('view',v.id,{silent:true});}
-  for(const [kind,col] of [['person','persons'],['place','places'],['source','sources']]) for(const id of Object.keys(ALL[col])) if(ids.has(id)) Store.del(kind,id,{silent:true});
+    if(ch) Store.put(q,{silent:true,nohist:true}); }
+  for(const v of Object.values(ALL.views)){const refs=[...(v.hide||[]),...(v.hideUp||[]),...(v.hideDown||[])]; if(refs.length&&refs.every(id=>ids.has(id))) Store.del('view',v.id,{silent:true,nohist:true});}
+  for(const [kind,col] of [['person','persons'],['place','places'],['source','sources']]) for(const id of Object.keys(ALL[col])) if(ids.has(id)) Store.del(kind,id,{silent:true,nohist:true});
   if(ui.focus&&ids.has(ui.focus)) ui.focus=null;
 }
 
@@ -2612,7 +2711,7 @@ const Share={
   changedNames(){const t=this.cur(); if(!t) return []; const b=(t.base&&t.base.persons)||{}, out=[];
     for(const p of Object.values(ALL.persons)) if(KinCore.docHash(p)!==b[p.id]) out.push((b[p.id]?'':'Ny: ')+fullName(p));
     for(const id in b) if(!ALL.persons[id]) out.push('Borttagen person'); return out;},
-  changed(){if(!this.cur()) return; clearTimeout(this._ct); this._ct=setTimeout(()=>{this.recount(); this.updateStatus();},500);},
+  changed(){if(!this.cur()) return; clearTimeout(this._ct); this._ct=setTimeout(()=>{this.recount(); this.updateStatus();},500); Unpub.arm();},
   updateStatus(){
     const b=$('#shareBtn'); if(b) b.hidden=!this.enabled()||Store.demo;
     if(Store.mode==='db') return;
@@ -2662,7 +2761,7 @@ const Share={
     const theirs={persons:v.data.persons||{},places:v.data.places||{},sources:v.data.sources||{},views:v.data.views||{}};
     const mine=this.archive(), hadLocal=this.recount()>0;
     const {data,conflicts}=hadLocal?KinCore.merge3(t.base,mine,theirs):{data:theirs,conflicts:[]};
-    Object.assign(ALL,data); t.version=v.version; t.base=KinCore.hashArchive(theirs); this.newer=false;
+    Object.assign(ALL,data); Hist.clear(); t.version=v.version; t.base=KinCore.hashArchive(theirs); this.newer=false;
     t.uploaded=t.uploaded||{}; for(const b of blobRefs(theirs)) t.uploaded[b]=1; this.save();
     applyView(); Store.saveNow(); ui.treeKey=null; renderAll(true); this.updateStatus();
     if(!quiet||conflicts.length){const by=v.data.meta&&v.data.meta.by; toast(`Hämtade version ${v.version}${by?' från '+by:''}.`+(conflicts.length?` ${conflicts.length} uppgift(er) hade ändrats av er båda – den senaste ändringen behölls.`:'')+(hadLocal?' Dina egna ändringar ligger kvar opublicerade.':''),6500);}
@@ -2693,12 +2792,12 @@ const Share={
     finally{ this.busy=false; }
   },
   async discard(){const t=this.cur(); if(!t) return; const v=await this.fetchVersion(this.st.active,t.key,t.version);
-    Object.assign(ALL,{persons:v.data.persons||{},places:v.data.places||{},sources:v.data.sources||{},views:v.data.views||{}}); applyView(); Store.saveNow(); ui.treeKey=null; renderAll(true); this.updateStatus(); toast('Dina opublicerade ändringar är borttagna.');},
+    Object.assign(ALL,{persons:v.data.persons||{},places:v.data.places||{},sources:v.data.sources||{},views:v.data.views||{}}); Hist.clear(); applyView(); Store.saveNow(); ui.treeKey=null; renderAll(true); this.updateStatus(); toast('Dina opublicerade ändringar är borttagna.');},
   async history(){const t=this.cur(); const rows=await this.rpc('kl_history',{tree:this.st.active})||[];
     for(const r of rows){ r.info=null; if(r.meta) try{r.info=await KinCore.decryptJSON(r.meta,t.key);}catch(e){} } return rows;},
   /** Make an older version the working copy. It goes live for everyone when published. */
   async restore(ver){const t=this.cur(); const v=await this.fetchVersion(this.st.active,t.key,ver);
-    Object.assign(ALL,{persons:v.data.persons||{},places:v.data.places||{},sources:v.data.sources||{},views:v.data.views||{}});
+    Object.assign(ALL,{persons:v.data.persons||{},places:v.data.places||{},sources:v.data.sources||{},views:v.data.views||{}}); Hist.clear();
     applyView(); Store.saveNow(); ui.treeKey=null; ui.sel=null; renderAll(true); this.updateStatus();
     toast(`Trädet ser nu ut som i version ${ver}. Tryck Publicera för att alla ska få det.`,7000,{label:'Publicera',fn:()=>this.publish()});},
   async switchTo(id){await Store.saveNow(); this.st.active=id||null; this.newer=false; this.save(); await Store.loadLocal(); applyView(); ui.focus=null; ui.sel=null; ui.treeKey=null; this.updateStatus(); renderAll(true); if(id) this.check(true);},
@@ -2760,6 +2859,42 @@ function shareTreeModal(){
       catch(e){cr.disabled=false; cr.textContent='Skapa delningslänk'; toast('Kunde inte skapa delningen: '+(e.message||e),7000);} };
   });
 }
+/* ============ Backups ============
+   A local archive lives only in this browser. Remember when a backup file was last saved,
+   show it on the "Läs in & spara" page, and nudge (at most every few days) when it's overdue. */
+const Backup={
+  key:()=>'klansagan-backup-'+Share.lsKey(),
+  last(){ try{return JSON.parse(localStorage.getItem(this.key())||'null');}catch(e){return null;} },
+  mark(){ try{localStorage.setItem(this.key(),JSON.stringify({at:new Date().toISOString(),n:Object.keys(ALL.persons).length}));}catch(e){} },
+  changedSince(at){ let n=0; for(const col of ['persons','places','sources']) for(const d of Object.values(ALL[col])) if((d.updatedAt||d.createdAt||'')>at) n++; return n; },
+  status(){ const l=this.last(), n=Object.keys(ALL.persons).length;
+    if(!l) return {n,last:null,changed:n,days:Infinity};
+    return {n,last:l.at,changed:this.changedSince(l.at),days:(Date.now()-Date.parse(l.at))/864e5}; },
+  /** Only local archives: a shared tree is kept, encrypted, on the server in 30 versions. */
+  overdue(){ if(Store.demo||Store.mode==='db'||!Store.canEdit||Share.cur()) return false;
+    const st=this.status(); if(st.n<5) return false; return !st.last||(st.changed>0&&st.days>=14); },
+  async save(){ await doExport('json'); },
+  box(){ const st=this.status(), d=st.last?fmtDate(st.last.slice(0,10)):'';
+    const line=!st.last?'Du har inte sparat någon säkerhetskopia än.':st.changed?`Senaste kopian sparades ${d}. ${st.changed} ${st.changed===1?'sak har':'saker har'} ändrats sedan dess.`:`Senaste kopian sparades ${d}. Inget har ändrats sedan dess.`;
+    return `<div class="box backup ${this.overdue()?'due':''}"><h3>Säkerhetskopia</h3>
+      <p>${Share.cur()?'Det här trädet är delat, så de publicerade versionerna finns krypterade på servern. En egen kopia skadar ändå aldrig.':'Arkivet finns bara i den här webbläsaren. Rensas webbläsaren, eller byter du dator, försvinner det – om du inte har en kopia.'} Kopian är en fil med allt, bilder och röstminnen inräknade, som du kan läsa in igen här.</p>
+      <p class="bk-line"><b>${line}</b></p>
+      <button class="btn primary" id="bkSave">💾 Spara säkerhetskopia</button></div>`; },
+  remind(){ if(!this.overdue()) return;
+    try{ const sn=+localStorage.getItem('klansagan-backup-nudged')||0; if(Date.now()-sn<3*864e5) return; localStorage.setItem('klansagan-backup-nudged',String(Date.now())); }catch(e){}
+    const st=this.status();
+    toast(st.last?`Det var ${Math.round(st.days)} dagar sedan du sparade en säkerhetskopia.`:`Du har ${st.n} personer i arkivet men ingen säkerhetskopia.`,12000,{label:'Spara kopia',fn:()=>this.save()}); },
+};
+
+/* ============ Unpublished changes ============
+   In a shared tree your edits stay on this device until you publish them. Leaving with
+   unpublished edits asks first; coming back to them, and sitting on them for a while, gets a nudge. */
+const Unpub={
+  count(){ if(!Share.cur()||Store.demo||Store.mode==='db') return 0; try{return Share.recount();}catch(e){return 0;} },
+  nudge(msg){ const n=this.count(); if(!n) return; toast(msg(n===1?'1 ändring':n+' ändringar',n===1?'':'a'),9000,{label:'Publicera',fn:()=>Share.publish()}); },
+  arm(){ clearTimeout(this._t); if(this._done) return; this._t=setTimeout(()=>{ if(this.count()&&!document.hidden){ this._done=true; this.nudge(n=>`Du har ${n} som släkten inte ser ännu.`); } },10*60*1000); },
+};
+addEventListener('beforeunload',e=>{ if(Unpub.count()){ e.preventDefault(); e.returnValue=''; } });
 {const sb=$('#shareBtn'); if(sb) sb.onclick=shareTreeModal; const st=$('#status'); if(st) st.onclick=()=>{ if(Share.newer) Share.pull(); else if(Share.enabled()) shareTreeModal(); };}
 /* ============ Install as an app (PWA) ============ */
 const PWA={prompt:null,

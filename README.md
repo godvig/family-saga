@@ -59,6 +59,9 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 - **Easy to use:** a start page with three clear choices and a *simple mode* (big text, only Start, Tree and People) that a link can switch on with `?enkelt`. Mark yourself as "me" and kinship is counted from you. Light by default, dark mode on request.
 - **Call names (tilltalsnamn):** mark the name a person went by. It is underlined Swedish-style, and you can show short names everywhere (call name, or the first given name).
 - **Show the path in the tree:** the relationship calculator ("Hur är vi släkt?") opens the tree around the shared ancestor and lights up the chain between the two people, couples included, and dims everyone else.
+- **Backups:** a local archive lives only in the browser, so *Import & export* shows when you last saved a backup and how much has changed since, and the app reminds you (at most every few days) when you have never saved one or it is two weeks old with changes. The backup is one JSON file with everything, photos and voice memories included, and reads straight back in.
+- **Photos straight onto people:** drag an image onto a card in the tree (or the person panel), paste one with Ctrl+V while someone is selected, or tap the empty photo on a card; on a phone that offers the camera. The first photo becomes the profile picture and is framed on the face.
+- **Undo everything:** every change — an edit, a deleted person with all their links, a photo upload, a whole import — can be undone and redone with the ↶ ↷ buttons or Ctrl+Z / Ctrl+Shift+Z. Changes made in one go count as one step, and the toast says what was undone.
 - **Animated tree:** when you click someone, they stay put under your cursor while the rest of the family glides into its new places (and the view eases them back towards the middle if they ended up near an edge); relatives who leave the view fade out and new ones fade in. Respects *reduce motion*.
 - **Voice memories:** record grandma telling a story straight from the browser (or upload an audio file) and attach it to a person, or to one of their photos. Recordings are small (Opus, about 180 KB a minute), kept on the device and, in shared trees, uploaded end-to-end encrypted like photos.
 - **Thumbnails:** photos get a small thumbnail when uploaded, so the tree and lists load only a few kilobytes per person; the full image is fetched when you open it.
@@ -119,7 +122,7 @@ CI runs the same checks on every push and pull request. The test suite covers Sw
 
 **Dela** creates a link you send to relatives. The tree is encrypted in the browser with AES-256-GCM; the key sits in the link's `#fragment`, which browsers never send to a server. Supabase stores only ciphertext and checks a write secret derived from the key, so neither the host nor the site owner can read a shared tree.
 
-Everyone with the link can edit a local working copy and **publish** when ready. If two people publish in parallel, the second publish merges document by document (three-way merge); when both changed the same person, the newer edit wins. The server keeps the last 30 versions.
+Everyone with the link can edit a local working copy and **publish** when ready. If two people publish in parallel, the second publish merges document by document (three-way merge); when both changed the same person, the newer edit wins. The server keeps the last 30 versions. Leaving the page with unpublished edits asks first, coming back to them shows a reminder with a Publish button, and so does sitting on them for ten minutes.
 
 Photos are kept in IndexedDB on each device and, in a shared tree, uploaded once each as separate encrypted blobs, so publishing never re-sends them.
 
@@ -127,17 +130,18 @@ To run your own: create a Supabase project, run the files in `supabase/migration
 
 ## Roadmap
 
-Done recently: encrypted sharing with publish and merge, version history, photo storage with thumbnails, voice memories, animated tree, kinship path in the tree, archive in IndexedDB, self-hosted fonts, phone layout, installable offline app (PWA).
+Done recently: undo/redo for every change, a reminder before leaving with unpublished changes, photos dropped straight onto tree cards, backup reminders, encrypted sharing with publish and merge, version history, photo storage with thumbnails, voice memories, animated tree, kinship path in the tree, archive in IndexedDB, self-hosted fonts, phone layout, installable offline app (PWA).
 
-**Next**
-- Undo/redo everywhere; warning before leaving with unpublished changes
-- Drop or take a photo straight onto a tree card; photo gallery on the person card
-- GEDCOM import
-- Swedish source templates (Riksarkivet, ArkivDigital)
-- Life path on the map, played in date order
-- Family book as PDF; "on this day" on the start page
-- Read-only share links and key rotation; comment threads per person; "what's new since your last visit"
-- Landing page for new visitors; English UI
+**Next, in order**
+1. GEDCOM import
+2. Swedish source templates (Riksarkivet, ArkivDigital)
+3. Landing page for new visitors
+4. Comment threads per person
+5. Browser tests in CI; split `app.js` into modules
+6. Locked tree, step 2: add a branch by clicking someone outside it
+7. "On this day" on the start page; family book as PDF
+
+**Later:** life path on the map, photo gallery on the person card, read-only share links with protection for living people, "what's new since your last visit", English UI.
 
 ## License
 
