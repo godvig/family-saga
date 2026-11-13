@@ -411,6 +411,271 @@
     return b64u(new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode('klansagan-write'))));
   }
 
+  /* ------------------------------------------------- Swedish source citations */
+
+  /** County letters used in Swedish church-record references, e.g. "Röke (L)". */
+  const COUNTY = { AB: 'Stockholms län', A: 'Stockholms stad', B: 'Stockholms län', C: 'Uppsala län', D: 'Södermanlands län', E: 'Östergötlands län', F: 'Jönköpings län', G: 'Kronobergs län', H: 'Kalmar län', I: 'Gotlands län', K: 'Blekinge län', L: 'Kristianstads län', M: 'Malmöhus län', N: 'Hallands län', O: 'Göteborgs och Bohus län', P: 'Älvsborgs län', R: 'Skaraborgs län', S: 'Värmlands län', T: 'Örebro län', U: 'Västmanlands län', W: 'Kopparbergs län', X: 'Gävleborgs län', Y: 'Västernorrlands län', Z: 'Jämtlands län', AC: 'Västerbottens län', BD: 'Norrbottens län' };
+  /** Church-archive series → source type: AI husförhör, AII församlingsbok, B flytt, C födde, E vigda, F döda. @param {string} vol */
+  function seriesType(vol) {
+    const v = String(vol || '').toUpperCase().replace(/[\s:./]/g, '');
+    if (/^AII/.test(v)) return 'Församlingsbok';
+    if (/^AI/.test(v)) return 'Husförhörslängd';
+    if (/^A\d/.test(v)) return 'Husförhörslängd';
+    if (/^B/.test(v)) return 'Flyttlängd';
+    if (/^C/.test(v)) return 'Födelse- och dopbok';
+    if (/^E/.test(v)) return 'Lysnings- och vigselbok';
+    if (/^F/.test(v)) return 'Död- och begravningsbok';
+    return 'Övrigt';
+  }
+  /** "A II/3", "AII:3", "C:3" → "AII:3" / "C:3" (same volume written by Riksarkivet and ArkivDigital). @param {string} v */
+  const volKey = (v) => String(v || '').toUpperCase().replace(/\s+/g, '').replace(/[/.]/g, ':');
+
+  /**
+   * Read a citation copied from ArkivDigital or Riksarkivet (SVAR), or a link to an image there.
+   *  - ArkivDigital: "Röke (L) AII:3 (1918-1933) Bild 70 / sid 3 (AID: v350192.b70.s3, NAD: SE/LLA/13324)"
+   *  - Riksarkivet:  "Röke kyrkoarkiv, Församlingsböcker, SE/LLA/13324/A II/3 (1918-1933), bildid: 00127782_00010"
+   * Returns the volume as a source (title, type, NAD reference) and the place in it as a citation
+   * (image, page, AID / image id, link), or null when the text is neither.
+   * @param {string} text
+   */
+  function parseSwedishCitation(text) {
+    const t = String(text || '').replace(/\s+/g, ' ').trim(); if (!t) return null;
+    const bild = t.match(/(?:bildid|bild-id|image id)[:\s]*([A-Z0-9]{8}_\d{5})\b/i) || t.match(/riksarkivet\.se\/bildvisning\/(?:Kalla\/)?([A-Z0-9]{8}_\d{5})/i) || t.match(/\b([A-Z]\d{7}_\d{5}|\d{8}_\d{5})\b/);
+    const aid = t.match(/\bAID[:\s]*(v\d+[a-z]?\.b\d+(?:\.s\d+)?)/i) || t.match(/\b(v\d+[a-z]?\.b\d+\.s\d+)\b/i);
+    const nadM = t.match(/\bNAD[:\s]*(SE\/[A-Za-zÅÄÖåäö]+\/[\w.-]+)/i);
+    const years = (t.match(/\((\d{4})\s*[-–]\s*(\d{4})\)/) || t.match(/\((\d{4})\)/));
+    const yr = years ? (years[2] ? `${years[1]}–${years[2]}` : years[1]) : '';
+    /** @type {any} */ let r = null;
+    // ArkivDigital: "<Parish> (<county>) <volume> (<years>) Bild <n> / sid <n>"
+    const ad = t.match(/^(.+?)\s*\(([A-ZÅÄÖ]{1,2})\)\s+([A-ZÅÄÖ]{1,4}\s?[IVX]*\s?[a-z]?[:/]?\s?\d+[a-zA-Z]?(?:[:/]\d+)?)\s*(?:\((\d{4}(?:\s*[-–]\s*\d{4})?)\))?/);
+    if (ad && !/kyrkoarkiv/i.test(ad[1])) {
+      const vol = ad[3].replace(/\s+/g, ''), cty = ad[2].toUpperCase();
+      r = { from: 'ad', parish: ad[1].trim(), county: COUNTY[cty] || '', countyCode: cty, volume: vol, years: yr, nad: nadM ? nadM[1] : '', type: seriesType(vol) };
+      r.title = `${r.parish} (${cty}) ${vol}${yr ? ` (${yr})` : ''}`;
+    }
+    // Riksarkivet: "<Archive>, <series>, SE/<arkiv>/<nr>/<volume> (<years>), bildid: …"
+    const ra = t.match(/^(.+?),\s*([^,]+?),\s*(SE\/[A-Za-zÅÄÖåäö]+\/[\w.-]+)\/([^,(]+?)\s*(?:\(([^)]*)\))?\s*(?:,|$)/);
+    if (!r && ra) {
+      const vol = ra[4].trim(), arch = ra[1].trim();
+      const parish = arch.replace(/\s+(kyrkoarkiv|församlings? kyrkoarkiv|domkyrkoförsamlings kyrkoarkiv)$/i, '').replace(/s$/, (m) => /kyrkoarkiv/i.test(arch) && !/(ss|us)$/.test(arch.replace(/\s.*$/, '')) ? '' : m);
+      const st = /födelse|dop/i.test(ra[2]) ? 'Födelse- och dopbok' : /husförhör/i.test(ra[2]) ? 'Husförhörslängd' : /församlingsb/i.test(ra[2]) ? 'Församlingsbok' : /vigsel|lysning/i.test(ra[2]) ? 'Lysnings- och vigselbok' : /död|begrav/i.test(ra[2]) ? 'Död- och begravningsbok' : /flytt/i.test(ra[2]) ? 'Flyttlängd' : /bouppteck/i.test(ra[2]) ? 'Bouppteckning' : /mönsterrull/i.test(ra[2]) ? 'Generalmönsterrulla' : seriesType(vol);
+      r = { from: 'ra', archive: arch, parish, series: ra[2].trim(), nad: ra[3], volume: vol, years: yr || (ra[5] || ''), type: st };
+      r.title = `${arch}, ${r.series}, ${ra[3]}/${vol}${r.years ? ` (${r.years})` : ''}`;
+    }
+    if (!r && (bild || aid)) r = { from: bild ? 'ra' : 'ad', title: '', type: 'Övrigt' };
+    if (!r) return null;
+    const img = t.match(/\b(?:bild|image)\s*(\d+)/i) || (aid && aid[1].match(/\.b(\d+)/));
+    const page = t.match(/\b(?:sid(?:a|an)?|s\.|page|pag\.?)\s*(\d+[a-z]?)/i) || (aid && aid[1].match(/\.s(\d+)/));
+    r.image = img ? img[1] : ''; r.page = page ? page[1] : '';
+    if (aid) r.aid = aid[1]; if (bild) r.bildid = bild[1].toUpperCase();
+    if (r.bildid) r.url = 'https://sok.riksarkivet.se/bildvisning/' + r.bildid;
+    r.detail = [r.image && 'Bild ' + r.image, r.page && 'sid ' + r.page].filter(Boolean).join(' / ');
+    if (r.aid) r.detail += (r.detail ? ' ' : '') + `(AID: ${r.aid})`;
+    if (r.bildid) r.detail += (r.detail ? ', ' : '') + `bildid: ${r.bildid}`;
+    r.key = r.nad && r.volume ? r.nad.split('/').slice(0, 3).join('/') + '|' + volKey(r.volume) : '';
+    return r;
+  }
+
+  /* --------------------------------------------------------------- GEDCOM import */
+
+  const ANSEL_COMB = { 0xE1: '̀', 0xE2: '́', 0xE3: '̂', 0xE4: '̃', 0xE5: '̄', 0xE6: '̆', 0xE7: '̇', 0xE8: '̈', 0xE9: '̌', 0xEA: '̊', 0xEB: '͡', 0xED: '̕', 0xEE: '̋', 0xF0: '̧', 0xF1: '̨', 0xF2: '̣', 0xF3: '̤', 0xF4: '̥', 0xF5: '̳', 0xF6: '̲', 0xF7: '̦', 0xF8: '̜', 0xF9: '̮', 0xFE: '̓' };
+  const ANSEL_CHR = { 0xA1: 'Ł', 0xA2: 'Ø', 0xA3: 'Đ', 0xA4: 'Þ', 0xA5: 'Æ', 0xA6: 'Œ', 0xA7: 'ʹ', 0xA8: '·', 0xA9: '♭', 0xAA: '®', 0xAB: '±', 0xAC: 'Ơ', 0xAD: 'Ư', 0xAE: 'ʼ', 0xB0: 'ʻ', 0xB1: 'ł', 0xB2: 'ø', 0xB3: 'đ', 0xB4: 'þ', 0xB5: 'æ', 0xB6: 'œ', 0xB7: 'ʺ', 0xB8: 'ı', 0xB9: '£', 0xBA: 'ð', 0xBC: 'ơ', 0xBD: 'ư', 0xC0: '°', 0xC1: 'ℓ', 0xC2: '℗', 0xC3: '©', 0xC4: '♯', 0xC5: '¿', 0xC6: '¡', 0xC7: 'ß', 0xC8: '€', 0xCF: 'ß' };
+  /* IBM PC code page 437/850, the characters Swedish files actually use. */
+  const CP850 = { 0x80: 'Ç', 0x81: 'ü', 0x82: 'é', 0x83: 'â', 0x84: 'ä', 0x85: 'à', 0x86: 'å', 0x87: 'ç', 0x88: 'ê', 0x89: 'ë', 0x8A: 'è', 0x8B: 'ï', 0x8C: 'î', 0x8D: 'ì', 0x8E: 'Ä', 0x8F: 'Å', 0x90: 'É', 0x91: 'æ', 0x92: 'Æ', 0x93: 'ô', 0x94: 'ö', 0x95: 'ò', 0x96: 'û', 0x97: 'ù', 0x98: 'ÿ', 0x99: 'Ö', 0x9A: 'Ü', 0x9B: 'ø', 0x9C: '£', 0x9D: 'Ø', 0xA0: 'á', 0xA1: 'í', 0xA2: 'ó', 0xA3: 'ú', 0xA4: 'ñ', 0xA5: 'Ñ', 0xE1: 'ß' };
+
+  /**
+   * Turn the bytes of a .ged file into text. Honours a byte-order mark, then the file's own
+   * "1 CHAR" line: UTF-8/UNICODE, ANSI (Windows-1252), ANSEL (old Disgen and FamilySearch
+   * files, where accents come before the letter) and IBM PC (code page 850).
+   * @param {Uint8Array} b @returns {{text:string, charset:string}}
+   */
+  function decodeGedcom(b) {
+    if (b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF) return { text: new TextDecoder('utf-8').decode(b.subarray(3)), charset: 'UTF-8' };
+    if (b[0] === 0xFF && b[1] === 0xFE) return { text: new TextDecoder('utf-16le').decode(b.subarray(2)), charset: 'UTF-16' };
+    if (b[0] === 0xFE && b[1] === 0xFF) return { text: new TextDecoder('utf-16be').decode(b.subarray(2)), charset: 'UTF-16' };
+    if (b[0] === 0x30 && b[1] === 0x00) return { text: new TextDecoder('utf-16le').decode(b), charset: 'UTF-16' };
+    let head = ''; for (let i = 0; i < Math.min(b.length, 4000); i++) head += String.fromCharCode(b[i] < 128 ? b[i] : 63);
+    const m = head.match(/\n\s*1\s+CHAR\s+([^\r\n]+)/i); const cs = (m ? m[1] : 'UTF-8').trim().toUpperCase();
+    if (/ANSEL/.test(cs)) {
+      let out = '', comb = '';
+      for (const c of b) {
+        if (ANSEL_COMB[c]) { comb += ANSEL_COMB[c]; continue; }
+        const ch = c < 128 ? String.fromCharCode(c) : (ANSEL_CHR[c] || '�');
+        out += ch + comb; comb = '';
+      }
+      return { text: out.normalize('NFC'), charset: 'ANSEL' };
+    }
+    if (/IBM|PC|850|437|DOS/.test(cs)) { let out = ''; for (const c of b) out += c < 128 ? String.fromCharCode(c) : (CP850[c] || '�'); return { text: out, charset: 'IBM PC' }; }
+    if (/ANSI|WINDOWS|1252|LATIN|8859/.test(cs) && !/UTF/.test(cs)) return { text: new TextDecoder('windows-1252').decode(b), charset: 'ANSI' };
+    try { return { text: new TextDecoder('utf-8', { fatal: true }).decode(b), charset: 'UTF-8' }; }
+    catch (e) { return { text: new TextDecoder('windows-1252').decode(b), charset: 'ANSI (gissad)' }; }
+  }
+
+  const GMON = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+  /**
+   * GEDCOM date → the app's dates ("1850-01-12", "1850-01", "ca 1850", "före 1850", "mellan 1850 och 1860").
+   * @param {string} s @returns {string}
+   */
+  function fromGedDate(s) {
+    s = String(s || '').replace(/@#D[A-Z ]+@\s*/gi, '').replace(/\s+/g, ' ').trim();
+    if (!s) return '';
+    const one = (/** @type {string} */ x) => {
+      x = x.trim().replace(/^\((.*)\)$/, '$1');
+      const m = x.match(/^(?:(\d{1,2}) )?(?:([A-Z]{3}) )?(\d{3,4})(?:\/\d{1,2})?( B\.?C\.?)?$/i);
+      if (!m) return x;
+      const y = m[3].padStart(4, '0'), mo = m[2] && GMON[m[2].toUpperCase()];
+      if (m[2] && !mo) return x;
+      return mo ? (m[1] ? `${y}-${String(mo).padStart(2, '0')}-${m[1].padStart(2, '0')}` : `${y}-${String(mo).padStart(2, '0')}`) : y;
+    };
+    let m;
+    if ((m = s.match(/^(?:BET|FROM)\s+(.+?)\s+(?:AND|TO)\s+(.+)$/i))) return `mellan ${one(m[1])} och ${one(m[2])}`;
+    if ((m = s.match(/^(?:ABT|CAL|EST|ABOUT|CA\.?)\s+(.+)$/i))) return 'ca ' + one(m[1]);
+    if ((m = s.match(/^(?:BEF|TO)\s+(.+)$/i))) return 'före ' + one(m[1]);
+    if ((m = s.match(/^(?:AFT|FROM)\s+(.+)$/i))) return 'efter ' + one(m[1]);
+    if ((m = s.match(/^INT\s+(.+?)(?:\s*\((.*)\))?$/i))) return one(m[1]);
+    return one(s);
+  }
+
+  const GED_EVENTS = { BAPM: 'Dop', CHR: 'Dop', CONF: 'Konfirmation', BURI: 'Begravning', CREM: 'Begravning', EMIG: 'Utvandring', IMMI: 'Invandring', RESI: 'Bosatt', PROB: 'Bouppteckning', _MILT: 'Militärtjänst', MILI: 'Militärtjänst', _MILI: 'Militärtjänst' };
+  const OTHER_EVENTS = { CENS: 'Folkräkning', EDUC: 'Utbildning', GRAD: 'Examen', RETI: 'Pension', ADOP: 'Adoption', NATU: 'Medborgarskap', ORDN: 'Prästvigning', WILL: 'Testamente', TITL: 'Titel', RELI: 'Religion', NATI: 'Nationalitet', DSCR: 'Beskrivning', PROP: 'Egendom' };
+  const SWE_TYPES = ['Dop', 'Konfirmation', 'Vigsel', 'Kröning', 'Skilsmässa', 'Flytt', 'Bosatt', 'Yrke', 'Militärtjänst', 'Utvandring', 'Invandring', 'Begravning', 'Bouppteckning', 'Fotografi'];
+  /** Guess a Swedish source type from a title. @param {string} t */
+  function sourceType(t) {
+    const s = String(t || '').toLowerCase();
+    const R = /** @type {[RegExp,string][]} */ ([[/husförhör|\bhfl\b|\(ai[: ]/, 'Husförhörslängd'], [/födde|födelse|dop|\(c[: ]/, 'Födelse- och dopbok'], [/vigsel|lysning|\(e[: ]/, 'Lysnings- och vigselbok'], [/död|begrav|\(f[: ]/, 'Död- och begravningsbok'], [/flytt|\(b[: ]/, 'Flyttlängd'], [/bouppteck/, 'Bouppteckning'], [/folkräkning|census/, 'Folkräkning'], [/mantal/, 'Mantalslängd'], [/generalmönster|rulla/, 'Generalmönsterrulla'], [/emigrant/, 'Emigrantregister'], [/passager/, 'Passagerarlista'], [/dom(stol|bok)|ting/, 'Domstolsprotokoll'], [/http|www\./, 'Webbplats'], [/församling|kyrkbok/, 'Församlingsbok']]);
+    for (const [re, ty] of R) if (re.test(s)) return ty;
+    return 'Övrigt';
+  }
+
+  /**
+   * Parse a GEDCOM 5.5 / 5.5.1 / 7 file into the app's documents. Pure: ids come from `uid`.
+   * People get names, sex, birth/death, occupation, events, notes and source citations;
+   * families become parent links, partners and marriage/divorce events. Unknown tags are counted.
+   * @param {string} text @param {{uid?:(p:string)=>string, now?:string}} [opts]
+   */
+  function parseGedcom(text, { uid, now } = {}) {
+    let seq = 0; const id = uid || ((/** @type {string} */ p) => p + '_g' + (++seq).toString(36));
+    const at = now || new Date().toISOString();
+    /** @typedef {{lvl:number, xref:string, tag:string, val:string, kids:any[]}} GNode */
+    /** @type {GNode[]} */ const roots = []; /** @type {GNode[]} */ const stack = [];
+    for (const raw of String(text).replace(/^\uFEFF/, '').split(/\r\n|\r|\n/)) {
+      const line = raw.replace(/^\s+/, ''); if (!line) continue;
+      const m = line.match(/^(\d+)\s+(?:(@[^@]+@)\s+)?(\S+)(?:\s(.*))?$/); if (!m) continue;
+      const n = { lvl: +m[1], xref: m[2] || '', tag: m[3].toUpperCase(), val: m[4] || '', kids: [] };
+      if (n.tag === 'CONC' || n.tag === 'CONT') { const p = stack[n.lvl - 1]; if (p) p.val += (n.tag === 'CONT' ? '\n' : '') + n.val; continue; }
+      stack.length = n.lvl; const parent = stack[n.lvl - 1];
+      if (n.lvl === 0 || !parent) roots.push(n); else parent.kids.push(n);
+      stack[n.lvl] = n;
+    }
+    const kid = (/** @type {GNode} */ n, /** @type {string} */ t) => n.kids.find(k => k.tag === t);
+    const kidv = (/** @type {GNode} */ n, /** @type {string} */ t) => { const k = kid(n, t); return k ? k.val.trim() : ''; };
+    const byX = {}; for (const r of roots) if (r.xref) byX[r.xref] = r;
+    const stats = { persons: 0, families: 0, sources: 0, places: 0, citations: 0, media: 0, skipped: /** @type {Record<string,number>} */ ({}) };
+    const warnings = /** @type {string[]} */ ([]);
+    const skip = (/** @type {string} */ t) => { stats.skipped[t] = (stats.skipped[t] || 0) + 1; };
+    const noteText = (/** @type {GNode} */ n) => { const v = n.val.trim(); if (/^@[^@]+@$/.test(v)) { const r = byX[v]; return r ? r.val.trim() : ''; } return v; };
+
+    /* places, deduplicated by their full name */
+    const places = /** @type {Record<string,any>} */ ({}), placeByName = /** @type {Record<string,string>} */ ({});
+    const coord = (/** @type {string} */ v) => { const m = String(v || '').trim().match(/^([NSEW])?\s*(-?[\d.,]+)/i); if (!m) return NaN; const x = parseFloat(m[2].replace(',', '.')); return /[SW]/i.test(m[1] || '') ? -x : x; };
+    const place = (/** @type {GNode|undefined} */ n) => {
+      if (!n) return ''; const name = n.val.trim().replace(/\s*,\s*/g, ', ').replace(/(, )+$/, ''); if (!name) return '';
+      let pid = placeByName[name];
+      if (!pid) { pid = id('pl'); placeByName[name] = pid; places[pid] = { kind: 'place', id: pid, name, createdAt: at }; stats.places++; }
+      const map = kid(n, 'MAP'); if (map && places[pid].lat == null) { const la = coord(kidv(map, 'LATI')), lo = coord(kidv(map, 'LONG')); if (isFinite(la) && isFinite(lo)) { places[pid].lat = la; places[pid].lon = lo; } }
+      return pid;
+    };
+
+    /* sources */
+    const sources = /** @type {Record<string,any>} */ ({}), srcByX = /** @type {Record<string,string>} */ ({}), srcByTitle = /** @type {Record<string,string>} */ ({});
+    for (const r of roots) if (r.tag === 'SOUR' && r.xref) {
+      const title = kidv(r, 'TITL') || kidv(r, 'ABBR') || r.val.trim() || 'Källa utan titel';
+      const s = /** @type {any} */ ({ kind: 'source', id: id('s'), title, type: sourceType(title), createdAt: at });
+      const auth = kidv(r, 'AUTH'), publ = kidv(r, 'PUBL'), repo = kid(r, 'REPO'), www = kidv(r, 'WWW');
+      if (publ || auth) s.ref = [auth, publ].filter(Boolean).join(', ');
+      if (repo) { const rr = byX[repo.val.trim()]; s.archive = (rr && kidv(rr, 'NAME')) || (repo.val.startsWith('@') ? '' : repo.val.trim()); if (!s.archive) delete s.archive; }
+      if (www) s.url = www;
+      const notes = r.kids.filter(k => k.tag === 'NOTE' || k.tag === 'TEXT').map(noteText).filter(Boolean); if (notes.length) s.notes = notes.join('\n\n');
+      sources[s.id] = s; srcByX[r.xref] = s.id; srcByTitle[title] = s.id; stats.sources++;
+    }
+    /** Citations under a node → [{sourceId, detail, about}] */
+    const cites = (/** @type {GNode} */ n, /** @type {string} */ about) => n.kids.filter(k => k.tag === 'SOUR').map(k => {
+      let sid = srcByX[k.val.trim()];
+      if (!sid) { const t = k.val.trim(); if (!t || t.startsWith('@')) return null; sid = srcByTitle[t]; if (!sid) { sid = id('s'); sources[sid] = { kind: 'source', id: sid, title: t, type: sourceType(t), createdAt: at }; srcByTitle[t] = sid; stats.sources++; } }
+      stats.citations++; const c = /** @type {any} */ ({ sourceId: sid, about }); const pg = kidv(k, 'PAGE'); if (pg) c.detail = pg;
+      const aid = pg.match(/\b(v\d+[a-z]?\.b\d+(?:\.s\d+)?)\b/i), bid = pg.match(/\b([A-Z]\d{7}_\d{5}|\d{8}_\d{5})\b/);
+      if (aid) c.aid = aid[1]; if (bid) { c.bildid = bid[1]; c.url = 'https://sok.riksarkivet.se/bildvisning/' + bid[1]; }
+      return c;
+    }).filter(Boolean);
+
+    /* people */
+    const persons = /** @type {Record<string,any>} */ ({}), perByX = /** @type {Record<string,string>} */ ({});
+    for (const r of roots) if (r.tag === 'INDI' && r.xref) {
+      const p = /** @type {any} */ ({ kind: 'person', id: id('p'), createdAt: at, events: [], citations: [] });
+      const nm = kid(r, 'NAME');
+      if (nm) {
+        const v = nm.val.trim(); const sm = v.match(/\/([^/]*)\//);
+        let given = (sm ? v.replace(sm[0], ' ') : v).replace(/\s+/g, ' ').trim(); let sur = sm ? sm[1].trim() : '';
+        if (!given) given = kidv(nm, 'GIVN'); if (!sur) sur = kidv(nm, 'SURN');
+        const star = given.split(' ').find(w => /\*$/.test(w)); // Swedish convention: "Anna* Maria" marks the call name
+        if (star) { p.callName = star.replace(/\*$/, ''); given = given.replace(/\*/g, ''); }
+        const call = kidv(nm, '_CALL') || kidv(nm, '_RUFNAME'); if (call && !p.callName) p.callName = call;
+        if (given) p.given = given; if (sur) p.surname = sur;
+        const nick = kidv(nm, 'NICK'); if (nick) p.nick = nick;
+      }
+      const sx = kidv(r, 'SEX').toUpperCase(); if (sx === 'M') p.sex = 'M'; else if (sx === 'F') p.sex = 'K';
+      const notes = []; let birthDone = false, deathDone = false;
+      for (const k of r.kids) {
+        const t = k.tag;
+        if (t === 'BIRT' && !birthDone) { birthDone = true; const d = fromGedDate(kidv(k, 'DATE')); if (d) p.birthDate = d; const pl = place(kid(k, 'PLAC')); if (pl) p.birthPlace = pl; p.citations.push(...cites(k, 'Födelse')); const nt = kid(k, 'NOTE'); if (nt) notes.push('Födelse: ' + noteText(nt)); }
+        else if (t === 'DEAT' && !deathDone) { deathDone = true; const d = fromGedDate(kidv(k, 'DATE')); if (d) p.deathDate = d; const pl = place(kid(k, 'PLAC')); if (pl) p.deathPlace = pl; const ca = kidv(k, 'CAUS'); if (ca) notes.push('Dödsorsak: ' + ca); p.citations.push(...cites(k, 'Död')); const nt = kid(k, 'NOTE'); if (nt) notes.push('Död: ' + noteText(nt)); }
+        else if (t === 'OCCU') { const v = k.val.trim(); if (v && !p.occupation) p.occupation = v; const d = fromGedDate(kidv(k, 'DATE')); if (v && (d || p.occupation !== v)) p.events.push({ id: id('e'), type: 'Yrke', desc: v, date: d, placeId: place(kid(k, 'PLAC')) }); p.citations.push(...cites(k, 'Yrke')); }
+        else if (t === 'NAME') { p.citations.push(...cites(k, 'Namn')); }
+        else if (GED_EVENTS[t] || OTHER_EVENTS[t] || t === 'EVEN' || t === 'FACT') {
+          let type = GED_EVENTS[t] || 'Övrigt', desc = k.val.trim(); const ty = kidv(k, 'TYPE');
+          if (t === 'EVEN' || t === 'FACT') { const sw = SWE_TYPES.find(x => x.toLowerCase() === ty.toLowerCase()); if (sw) type = sw; else desc = [ty, desc].filter(Boolean).join(': '); }
+          else if (OTHER_EVENTS[t]) desc = [OTHER_EVENTS[t], desc].filter(Boolean).join(': ');
+          else if (t === 'CREM') desc = desc || 'Kremering';
+          if (desc === 'Y') desc = '';
+          const e = /** @type {any} */ ({ id: id('e'), type, date: fromGedDate(kidv(k, 'DATE')), placeId: place(kid(k, 'PLAC')) });
+          const nt = kid(k, 'NOTE'); const nts = nt ? noteText(nt) : ''; const d2 = [desc, nts].filter(Boolean).join(' – '); if (d2) e.desc = d2;
+          p.events.push(e); p.citations.push(...cites(k, 'event:' + e.id));
+        }
+        else if (t === 'NOTE') { const v = noteText(k); if (v) notes.push(v); }
+        else if (t === 'SOUR') p.citations.push(...cites({ ...r, kids: [k] }, ''));
+        else if (t === 'OBJE') stats.media++;
+        else if (!['SEX', 'FAMC', 'FAMS', 'CHAN', 'RIN', 'REFN', '_UID', 'UID', 'RFN', 'AFN', 'SUBM', 'ANCI', 'DESI', 'RESN', 'ALIA', 'ASSO', 'CREA', '_UPD', 'EXID'].includes(t)) skip(t);
+      }
+      for (const e of p.events) { if (!e.date) delete e.date; if (!e.placeId) delete e.placeId; }
+      if (!p.events.length) delete p.events; if (!p.citations.length) delete p.citations;
+      if (notes.length) p.notes = notes.join('\n\n');
+      persons[p.id] = p; perByX[r.xref] = p.id; stats.persons++;
+    }
+
+    /* families */
+    for (const r of roots) if (r.tag === 'FAM') {
+      stats.families++;
+      const h = persons[perByX[kidv(r, 'HUSB')]], w = persons[perByX[kidv(r, 'WIFE')]];
+      if (h && w) { h.spouseIds = [...new Set([...(h.spouseIds || []), w.id])]; w.spouseIds = [...new Set([...(w.spouseIds || []), h.id])]; }
+      for (const c of r.kids.filter(k => k.tag === 'CHIL')) {
+        const ch = persons[perByX[c.val.trim()]]; if (!ch) continue;
+        if (h && !ch.fatherId) ch.fatherId = h.id; if (w && !ch.motherId) ch.motherId = w.id;
+      }
+      for (const [tag, type] of [['MARR', 'Vigsel'], ['DIV', 'Skilsmässa'], ['ENGA', 'Övrigt']]) for (const ev of r.kids.filter(k => k.tag === tag)) {
+        const date = fromGedDate(kidv(ev, 'DATE')), pl = place(kid(ev, 'PLAC'));
+        for (const [a, b] of [[h, w], [w, h]]) { if (!a) continue;
+          const e = /** @type {any} */ ({ id: id('e'), type }); if (b) e.withId = b.id; if (date) e.date = date; if (pl) e.placeId = pl; if (tag === 'ENGA') e.desc = 'Förlovning';
+          (a.events = a.events || []).push(e); const cs = cites(ev, 'event:' + e.id); if (cs.length) (a.citations = a.citations || []).push(...cs); }
+      }
+      if (!h && !w && r.kids.some(k => k.tag === 'CHIL')) warnings.push('En familj saknar föräldrar; barnen lästes in utan koppling.');
+    }
+    if (stats.media) warnings.push(`${stats.media} bildlänkar hoppades över – själva bilderna följer inte med i en GEDCOM-fil.`);
+    const sk = Object.entries(stats.skipped).sort((a, b) => b[1] - a[1]);
+    if (sk.length) warnings.push('Okända uppgifter som inte lästes in: ' + sk.slice(0, 6).map(([t, n]) => `${t} (${n})`).join(', ') + (sk.length > 6 ? ' …' : '') + '.');
+    const head = roots.find(r => r.tag === 'HEAD'); const srcApp = head ? (kidv(kid(head, 'SOUR') || /** @type {any} */ ({ kids: [] }), 'NAME') || kidv(head, 'SOUR')) : '';
+    return { persons, places, sources, stats, warnings, from: srcApp };
+  }
+
   /**
    * @typedef {{kind:string,id:string,before:any,after:any}} DocChange
    * @typedef {{label:(string|null),changes:DocChange[]}} HistGroup
@@ -456,7 +721,7 @@
     };
   }
 
-  const api = { createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret };
+  const api = { parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   // @ts-ignore — browser global
   root.KinCore = api;

@@ -42,7 +42,7 @@ const HIST=[
 const ALL={persons:{},places:{},sources:{},views:{}};
 const S={persons:{},places:ALL.places,sources:ALL.sources,views:ALL.views};
 const KIND={person:'persons',place:'places',source:'sources',view:'views'};
-const APP_VERSION='2026-11-13.23';
+const APP_VERSION='2026-11-13.25';
 const ui={nameMode:(()=>{try{return localStorage.getItem('sa-names')||'full';}catch(e){return 'full';}})(),simple:false,view:'trad',focus:null,sel:null,ancGen:3,descGen:2,kinDeg:2,plFilter:'alla',plSort:'namn',plQuery:'',
   tlScope:'alla',tlHist:true,mapScope:'alla',mapRoute:true,placing:null,treeKey:null,viewId:null};
 try{const f=localStorage.getItem('sa-focus'); if(f) ui.focus=f; const v=localStorage.getItem('sa-viewid'); if(v) ui.viewId=v;}catch(e){}
@@ -369,7 +369,10 @@ function personLabel(p){const ls=lifespan(p); return fullName(p)+(ls?' ('+ls.rep
 /* ============ Router ============ */
 const VIEWS={start:renderStart,trad:renderTree,solfjader:renderFan,personer:renderPersons,slaktskap:renderRel,personkort:renderCard,dubbletter:renderDups,tidslinje:renderTimeline,karta:renderMap,kallor:renderSources,import:renderImport};
 const NAVMAP={personkort:'personer',dubbletter:'personer'};
-function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} if(h==='exempel'){ui.pendingDemo=true; location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; followSelection(); if(matchMedia('(max-width:700px)').matches&&!ui.keepSel) ui.sel=null; ui.keepSel=false; /* on phones the person sheet would cover the new tab */ const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); {const mb=$('#moreBtn'); if(mb){const inMore=!!document.querySelector('#morePop a.on'); mb.classList.toggle('on',inMore); mb.querySelector('span').firstChild.textContent=inMore?document.querySelector('#morePop a.on b').textContent:'Mer'; $('#morePop').classList.remove('open');}} $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
+/** The "Mer" button names the page you're on when that page lives in its menu. */
+function updateMoreBtn(){const mb=$('#moreBtn'); if(!mb) return; const desk=!matchMedia('(max-width:1100px)').matches, onA=document.querySelector(desk?'#morePop a.on:not(.mob-only)':'#morePop a.on'), inMore=!!onA; mb.classList.toggle('on',inMore); mb.querySelector('span').firstChild.textContent=inMore?onA.querySelector('b').textContent:'Mer';}
+matchMedia('(max-width:1100px)').addEventListener('change',updateMoreBtn);
+function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} if(h==='exempel'){ui.pendingDemo=true; location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; followSelection(); if(matchMedia('(max-width:700px)').matches&&!ui.keepSel) ui.sel=null; ui.keepSel=false; /* on phones the person sheet would cover the new tab */ const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); {updateMoreBtn(); $('#morePop').classList.remove('open');} $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
 window.addEventListener('hashchange',route);
 let lastView=null;
 function renderAll(force){
@@ -910,7 +913,7 @@ function personPanel(p){
   <div class="sec cites"><h4>Källor ${ed?'<button class="btn sm" data-act="addcite">+ Källhänvisning</button>':''}</h4>
     <div id="citeform"></div>
     ${cites.length?cites.map(c=>{const s=S.sources[c.sourceId]; return `<div class="cite"><div style="display:flex;gap:6px"><b data-src="${c.sourceId}" style="flex:1">${esc(s?s.title:'(borttagen källa)')}</b>${ed?`<button class="iconbtn" data-delcite="${c.id}" title="Ta bort">×</button>`:''}</div>
-      <div class="small muted">${esc(aboutLabel(c.about))}${c.detail?' · '+esc(c.detail):''}${s&&s.ref?' · '+esc(s.ref):''}</div></div>`}).join(''):`<div class="muted small">Inga källor ännu. Koppla husförhörslängder, dopböcker m.m. så vet du var uppgifterna kommer ifrån.</div>`}
+      <div class="small muted">${esc(aboutLabel(c.about))}${c.detail?' · '+esc(c.detail):''}${s&&s.ref&&!(c.detail||'').includes(s.ref)?' · '+esc(s.ref):''}</div>${citeLinks(c)}</div>`}).join(''):`<div class="muted small">Inga källor ännu. Koppla husförhörslängder, dopböcker m.m. så vet du var uppgifterna kommer ifrån.</div>`}
   </div>
   ${voiceSection(p)}
   ${mediaSection(p)}
@@ -1077,10 +1080,19 @@ function eventForm(p,ev){
     Store.put(q);
   };
 }
+/** Links for a citation: the image at Riksarkivet, or the AID to paste into ArkivDigital. */
+function citeLinks(c){
+  if(!c.url&&!c.aid) return '';
+  return `<div class="cite-links">${c.url?`<a href="${esc(c.url)}" target="_blank" rel="noopener">Visa bilden hos Riksarkivet ↗</a>`:''}${c.aid?`<button class="linkbtn" data-copyaid="${esc(c.aid)}" title="Klistra in i ArkivDigitals sökruta för att öppna bilden">Kopiera AID ${esc(c.aid)}</button>`:''}</div>`;
+}
+document.addEventListener('click',e=>{ const b=/** @type {HTMLElement} */(e.target).closest&&/** @type {HTMLElement} */(e.target).closest('[data-copyaid]'); if(!b) return;
+  const v=b.getAttribute('data-copyaid'); (navigator.clipboard?navigator.clipboard.writeText(v):Promise.reject()).then(()=>toast('AID kopierat – klistra in det i ArkivDigital för att öppna bilden.'),()=>toast('AID: '+v,6000)); });
 function citeForm(p){
   const f=$('#citeform');
   const srcs=Object.values(S.sources).sort((a,b)=>a.title.localeCompare(b.title,'sv'));
   f.innerHTML=`<div class="mini">
+    <label class="f"><span>Klistra in från ArkivDigital eller Riksarkivet <small class="muted">– fyller i resten åt dig</small></span><textarea class="t" id="ciPaste" rows="2" placeholder="Röke (L) AII:3 (1918-1933) Bild 70 / sid 3 (AID: v350192.b70.s3, NAD: SE/LLA/13324)"></textarea></label>
+    <div id="ciParsed" class="ci-parsed" hidden></div>
     <label class="f"><span>Källa</span><select class="t" id="ciS"><option value="__new">+ Ny källa…</option>${srcs.map(s=>`<option value="${s.id}">${esc(s.title)}</option>`).join('')}</select></label>
     <div id="ciNew"><div class="row2"><label class="f"><span>Titel på ny källa</span><input class="t" id="ciT" placeholder="Rättvik (W) AI:15 1850–1855"></label>
       <label class="f"><span>Typ</span><select class="t" id="ciTy">${SOURCE_TYPES.map(t=>`<option>${t}</option>`).join('')}</select></label></div></div>
@@ -1090,10 +1102,27 @@ function citeForm(p){
   const sync=()=>$('#ciNew').style.display=$('#ciS').value==='__new'?'':'none';
   if(srcs.length) $('#ciS').value=srcs[0].id; sync(); $('#ciS').onchange=sync;
   $('#ciC').onclick=()=>f.innerHTML='';
+  // A pasted ArkivDigital / Riksarkivet citation picks (or prepares) the volume as the source and fills in image and page.
+  let parsed=null;
+  $('#ciPaste').oninput=()=>{
+    const r=KinCore.parseSwedishCitation($('#ciPaste').value), box=$('#ciParsed'); parsed=r;
+    if(!r){ box.hidden=!$('#ciPaste').value.trim(); box.innerHTML='Känner inte igen texten. Kopiera hänvisningen från ArkivDigital (Kopiera källa) eller Riksarkivets bildvisning (Källa).'; box.className='ci-parsed bad'; return; }
+    const ex=r.key&&Object.values(S.sources).find(x=>x.volKey===r.key) || r.title&&Object.values(S.sources).find(x=>norm(x.title)===norm(r.title));
+    if(ex) $('#ciS').value=ex.id; else if(r.title){ $('#ciS').value='__new'; $('#ciT').value=r.title; if(SOURCE_TYPES.includes(r.type)) $('#ciTy').value=r.type; }
+    sync(); $('#ciD').value=r.detail;
+    const ab={'Födelse- och dopbok':'Födelse','Död- och begravningsbok':'Död'}[r.type]; const vig=r.type==='Lysnings- och vigselbok'&&(p.events||[]).find(e=>e.type==='Vigsel');
+    if(ab) $('#ciA').value=ab; else if(vig) $('#ciA').value='event:'+vig.id;
+    box.hidden=false; box.className='ci-parsed ok';
+    box.innerHTML=`✓ ${r.from==='ad'?'ArkivDigital':'Riksarkivet'}${r.parish?` · ${esc(r.parish)}${r.county?' ('+esc(r.county)+')':''}`:''}${r.type!=='Övrigt'?' · '+esc(r.type):''} – ${ex?`kopplas till <b>${esc(ex.title)}</b>`:r.title?'ny källa skapas':'välj vilken källa bilden hör till'}${r.url?` · <a href="${esc(r.url)}" target="_blank" rel="noopener">visa bilden ↗</a>`:''}`;
+  };
   $('#ciOk').onclick=()=>{
     let sid=$('#ciS').value;
-    if(sid==='__new'){const t=$('#ciT').value.trim(); if(!t){$('#ciT').focus();return;} const s={kind:'source',id:uid('s'),title:t,type:$('#ciTy').value,createdAt:new Date().toISOString()}; Store.put(s,{silent:true}); sid=s.id;}
-    const q=clone(P(p.id)); q.citations=(q.citations||[]).concat([{id:uid('c'),sourceId:sid,about:$('#ciA').value,detail:$('#ciD').value.trim()}]);
+    if(sid==='__new'){const t=$('#ciT').value.trim(); if(!t){$('#ciT').focus();return;} const s={kind:'source',id:uid('s'),title:t,type:$('#ciTy').value,createdAt:new Date().toISOString()};
+      if(parsed&&parsed.title&&norm(parsed.title)===norm(t)){ if(parsed.key) s.volKey=parsed.key; if(parsed.nad) s.ref=parsed.nad+(parsed.from==='ad'?'':'/'+parsed.volume); s.archive=parsed.from==='ad'?'ArkivDigital':'Riksarkivet'; if(parsed.county) s.county=parsed.county; if(parsed.parish) s.parish=parsed.parish; if(parsed.nad) s.url='https://sok.riksarkivet.se/?postid=ArkisRef%20'+parsed.nad.split('/').slice(0,3).join('/'); }
+      Store.put(s,{silent:true}); sid=s.id;}
+    const c={id:uid('c'),sourceId:sid,about:$('#ciA').value,detail:$('#ciD').value.trim()};
+    if(parsed){ if(parsed.aid) c.aid=parsed.aid; if(parsed.bildid) c.bildid=parsed.bildid; if(parsed.url) c.url=parsed.url; }
+    const q=clone(P(p.id)); q.citations=(q.citations||[]).concat([c]);
     Store.put(q);
   };
 }
@@ -1619,8 +1648,8 @@ function renderImport(){
   v.innerHTML=`<div class="view-pad"><div class="toolbar"><h2>Import &amp; export</h2></div>
     ${Store.mode!=='db'&&!Store.demo&&Object.keys(ALL.persons).length?Backup.box():''}
     ${E.canEdit?`<div class="box"><h3>1. Läs in din släktlista</h3>
-      <p>Välj en Excel-fil (.xlsx, .xls) eller CSV – eller kopiera cellerna i Excel och klistra in dem nedan. En rad per person. Föräldrar kan anges med namn eller med personens id-nummer i listan.</p>
-      <div class="drop" id="drop"><b>Släpp filen här</b> eller klicka för att välja<input type="file" id="impFile" accept=".xlsx,.xls,.csv,.tsv,.txt,.ods" hidden></div>
+      <p>Välj en <b>GEDCOM-fil</b> (.ged) från ett annat släktprogram – Disgen, MyHeritage, Ancestry, Geni, Holger, Legacy… – eller en Excel-fil (.xlsx, .xls) eller CSV med en rad per person. Du kan också kopiera cellerna i Excel och klistra in dem nedan.</p>
+      <div class="drop" id="drop"><b>Släpp filen här</b> eller klicka för att välja<input type="file" id="impFile" accept=".ged,.gedcom,.xlsx,.xls,.csv,.tsv,.txt,.ods" hidden></div>
       <details style="margin-top:12px"><summary style="cursor:pointer;color:var(--accent)">…eller klistra in från Excel</summary>
         <textarea class="t" id="impPaste" style="margin-top:8px;min-height:120px;font-family:ui-monospace,monospace;font-size:12px" placeholder="Förnamn&#9;Efternamn&#9;Född&#9;Födelseort&#9;Far&#9;Mor"></textarea>
         <button class="btn sm" id="impPasteBtn" style="margin-top:6px">Läs in inklistrat</button></details>
@@ -1657,12 +1686,54 @@ function renderImport(){
 function loadXLSX(){return new Promise((res,rej)=>{if(window.XLSX) return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=res; s.onerror=()=>rej(new Error('Kunde inte ladda Excel-läsaren')); document.head.appendChild(s);});}
 async function readImportFile(file){
   try{
+    if(/\.(ged|gedcom)(\.txt)?$/i.test(file.name)){ await importGedcom(file); return; }
+    if(/\.txt$/i.test(file.name)&&/^\uFEFF?\s*0\s+HEAD/.test((await file.slice(0,64).text()))){ await importGedcom(file); return; }
     if(/\.(csv|tsv|txt)$/i.test(file.name)){ setImportRows(parseDelimited(await file.text())); return; }
     await loadXLSX();
     const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
     imp.wb=wb; imp.sheets=wb.SheetNames;
     useSheet(wb.SheetNames[0]);
   }catch(e){toast('Kunde inte läsa filen: '+(e.message||e));}
+}
+/* ============ GEDCOM import ============
+   The parsing lives in core.js (decodeGedcom + parseGedcom, unit tested). Here: match places and
+   sources with ones already in the archive, show what was found, then save it as one undoable step. */
+async function importGedcom(file){
+  const {text,charset}=KinCore.decodeGedcom(new Uint8Array(await file.arrayBuffer()));
+  if(!/^\s*0\s+HEAD/.test(text.replace(/^\uFEFF/,''))){toast('Det här ser inte ut som en GEDCOM-fil.',5000); return;}
+  const r=KinCore.parseGedcom(text,{uid});
+  if(!r.stats.persons){toast('Hittade inga personer i filen.',5000); return;}
+  // reuse places and sources the archive already has (same name / title)
+  const plMap={}, srcMap={}, newPl=[], newSrc=[];
+  const plIdx={}; for(const x of Object.values(ALL.places)) plIdx[norm(x.name)]=x;
+  const srIdx={}; for(const x of Object.values(ALL.sources)) srIdx[norm(x.title)]=x;
+  for(const pl of Object.values(r.places)){const ex=plIdx[norm(pl.name)]; if(ex) plMap[pl.id]=ex.id; else newPl.push(pl);}
+  for(const so of Object.values(r.sources)){const ex=srIdx[norm(so.title)]; if(ex) srcMap[so.id]=ex.id; else newSrc.push(so);}
+  const pm=id=>plMap[id]||id, sm=id=>srcMap[id]||id;
+  const people=Object.values(r.persons).map(p=>{ if(p.birthPlace) p.birthPlace=pm(p.birthPlace); if(p.deathPlace) p.deathPlace=pm(p.deathPlace);
+    (p.events||[]).forEach(e=>{ if(e.placeId) e.placeId=pm(e.placeId); }); (p.citations||[]).forEach(c=>c.sourceId=sm(c.sourceId)); return p; });
+  const had=Object.keys(ALL.persons).length, st=r.stats, n=people.length;
+  const sample=people.slice(0,6).map(p=>`<li>${esc(personLabel(p))}</li>`).join('');
+  const nf=x=>x.toLocaleString('sv-SE');
+  modal(`<h3>Läs in GEDCOM-fil</h3>
+    <p class="muted" style="margin-top:-6px">${esc(file.name)}${r.from?' · från '+esc(r.from):''} · ${esc(charset)}</p>
+    <div class="ged-stats"><div><b>${nf(n)}</b><span>personer</span></div><div><b>${nf(st.families)}</b><span>familjer</span></div><div><b>${nf(newSrc.length)}</b><span>nya källor</span></div><div><b>${nf(newPl.length)}</b><span>nya platser</span></div></div>
+    <p class="small" style="margin:10px 0 4px">Bland annat:</p><ul class="ged-sample">${sample}${n>6?`<li class="muted">… och ${nf(n-6)} till</li>`:''}</ul>
+    ${had?`<p class="ged-note">Personerna läggs till bredvid dina ${nf(had)}. Finns samma person redan kan du slå ihop dem under <b>Hitta dubbletter</b> efteråt – och hela inläsningen går att ångra.</p>`:''}
+    ${r.warnings.length?`<details class="ged-warn"><summary>${r.warnings.length} ${r.warnings.length===1?'sak':'saker'} att känna till</summary><ul>${r.warnings.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></details>`:''}
+    <div class="foot"><button class="btn" data-x>Avbryt</button><button class="btn primary" data-ok>Läs in ${nf(n)} personer</button></div>`,
+  (ov,close)=>{
+    ov.querySelector('[data-x]').onclick=close;
+    const ok=ov.querySelector('[data-ok]');
+    ok.onclick=async()=>{ ok.disabled=true; ok.textContent='Läser in…';
+      Hist.label(`Import av ${nf(n)} personer från GEDCOM`,5000);
+      await Store.putMany([...newPl,...newSrc,...people],f=>{ok.textContent=`Läser in… ${Math.round(f*100)} %`;});
+      close();
+      const first=people[0]; if(!had&&first){ setFocus(first.id); ui.treeKey=null; }
+      toast(`${nf(n)} personer inlästa från ${esc(file.name)}.`,7000,{label:'Visa i trädet',fn:()=>{ if(first){setFocus(first.id); ui.treeKey=null;} location.hash='trad'; }});
+      renderAll();
+    };
+  });
 }
 function useSheet(name){
   const ws=imp.wb.Sheets[name];
@@ -2174,7 +2245,7 @@ function renderCard(){
       ${(()=>{const solo=kids.filter(c=>!parts.some(sp=>c.fatherId===sp.id||c.motherId===sp.id)); return solo.length?`<div class="fam-group"><h5>Barn</h5><div class="recent" style="grid-template-columns:1fr">${solo.map(c=>chipHTML(c)).join('')}</div></div>`:'';})()}
       ${sibs.length?`<div class="fam-group"><h5>Syskon (${sibs.length})</h5><div class="recent" style="grid-template-columns:1fr">${sibs.map(c=>chipHTML(c)).join('')}</div></div>`:''}
       <h3 style="margin-top:22px">Källor</h3>
-      ${(p.citations||[]).map(c=>{const s=S.sources[c.sourceId]; return s?`<div class="cite"><b>${esc(s.title)}</b><div class="small muted">${esc([c.about&&!c.about.startsWith('event:')?c.about:'',c.detail,s.ref].filter(Boolean).join(' · '))}</div></div>`:'';}).join('')||'<p class="muted small">Inga källor kopplade ännu.</p>'}
+      ${(p.citations||[]).map(c=>{const s=S.sources[c.sourceId]; return s?`<div class="cite"><b>${esc(s.title)}</b><div class="small muted">${esc([c.about&&!c.about.startsWith('event:')?c.about:'',c.detail,s.ref].filter(Boolean).join(' · '))}</div>${citeLinks(c)}</div>`:'';}).join('')||'<p class="muted small">Inga källor kopplade ännu.</p>'}
     </div></div></div>`;
   bindChips(v,openCard);
   v.querySelectorAll('[data-img]').forEach(el=>el.onclick=()=>{ui.sel={type:'person',id:p.id}; openLightbox(p,+el.dataset.img);});
