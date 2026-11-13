@@ -42,8 +42,8 @@ const HIST=[
 const ALL={persons:{},places:{},sources:{},views:{}};
 const S={persons:{},places:ALL.places,sources:ALL.sources,views:ALL.views};
 const KIND={person:'persons',place:'places',source:'sources',view:'views'};
-const APP_VERSION='2026-11-12.1';
-const ui={nameMode:(()=>{try{return localStorage.getItem('sa-names')||'full';}catch(e){return 'full';}})(),simple:false,view:'trad',focus:null,sel:null,ancGen:3,descGen:2,plFilter:'alla',plSort:'namn',plQuery:'',
+const APP_VERSION='2026-11-13.2';
+const ui={nameMode:(()=>{try{return localStorage.getItem('sa-names')||'full';}catch(e){return 'full';}})(),simple:false,view:'trad',focus:null,sel:null,ancGen:10,descGen:10,kinDeg:10,plFilter:'alla',plSort:'namn',plQuery:'',
   tlScope:'alla',tlHist:true,mapScope:'alla',mapRoute:true,placing:null,treeKey:null,viewId:null};
 try{const f=localStorage.getItem('sa-focus'); if(f) ui.focus=f; const v=localStorage.getItem('sa-viewid'); if(v) ui.viewId=v;}catch(e){}
 let HIDDEN=new Set();
@@ -148,13 +148,13 @@ function setStatus(cls,txt){const s=$('#status'); s.className='status '+cls; con
 /* ============ Domain helpers ============ */
 const P=id=>S.persons[id];
 /* Call name (tilltalsnamn): p.callName is normally one of the given names. */
-const givenName=p=>ui.nameMode==='call'&&p.callName?p.callName:(p.given||'');
+const givenName=p=>ui.nameMode==='call'?(p.callName||(p.given||'').trim().split(/\s+/)[0]||''):(p.given||'');
 const shortName=p=>p?(p.callName||p.given||fullName(p)):'Okänd';
 const fullName=p=>p?([givenName(p),p.surname].filter(Boolean).join(' ')||'Namnlös'):'Okänd';
 /** Given names with the call name underlined, Swedish style. */
 const givenHtml=p=>{const g=p.given||''; if(!p.callName) return esc(g); const ws=g.split(/\s+/); const i=ws.findIndex(w=>w.replace(/[()]/g,'')===p.callName);
   return i<0?esc(g)+` <span class="muted">(${esc(p.callName)})</span>`:ws.map((w,j)=>j===i?`<u class="tn" title="Tilltalsnamn">${esc(w)}</u>`:esc(w)).join(' ');};
-const fullHtml=p=>[givenHtml(p),esc(p.surname||'')].filter(Boolean).join(' ')||'Namnlös';
+const fullHtml=p=>ui.nameMode==='call'?esc(fullName(p)):([givenHtml(p),esc(p.surname||'')].filter(Boolean).join(' ')||'Namnlös');
 const initials=p=>{const w=[p.given,p.surname].filter(Boolean).join(' ').split(/\s+/).filter(x=>/^[A-ZÅÄÖÉŁ]/i.test(x)&&!/^(av|von|de)$/i.test(x)); return ((w[0]||'?')[0]+(w.length>1&&!/^[IVX]+$/.test(w[1])?w[1][0]:'')).toUpperCase();};
 function lifespan(p){const b=yearOf(p.birthDate),d=yearOf(p.deathDate); if(!b&&!d) return ''; return (b||'?')+' – '+(d||(b&&NOW_Y-b<105?'':'?'));}
 const sexColor=p=>p&&p.sex==='M'?'var(--male)':p&&p.sex==='K'?'var(--female)':'var(--unk)';
@@ -163,6 +163,18 @@ function children(id){return Object.values(S.persons).filter(c=>c.fatherId===id|
 function partners(p){const set=new Set(p.spouseIds||[]); for(const c of children(p.id)){const o=c.fatherId===p.id?c.motherId:c.fatherId; if(o) set.add(o);} set.delete(p.id); return [...set].map(P).filter(Boolean);}
 function siblings(p){if(!p.fatherId&&!p.motherId) return []; return Object.values(S.persons).filter(s=>s.id!==p.id&&((p.fatherId&&s.fatherId===p.fatherId)||(p.motherId&&s.motherId===p.motherId))).sort((a,b)=>(dateKey(a.birthDate)||9999)-(dateKey(b.birthDate)||9999));}
 const isImg=m=>/^image\//.test(m&&m.contentType||'');
+/** Profile image entry (media item) for a person, or null. */
+function avatarMedia(p){const imgs=(p.media||[]).filter(isImg); return imgs.find(m=>m.profile)||imgs[0]||null;}
+/* Photo framing: m.focus={x,y,z,nw,nh}. x/y = point (0–1) of the image that should sit
+   in the centre of the frame, z = zoom (1 = just covers the frame), nw/nh = natural size.
+   Returns the image box in % of a frame with aspect ratio A (width/height). */
+function cropPct(m,A){const f=m&&m.focus; if(!f||!f.nw||!f.nh) return null;
+  const s=Math.max(A/f.nw,1/f.nh)*(f.z||1), w=f.nw*s, h=f.nh*s;
+  const l=Math.min(0,Math.max(A-w,A/2-f.x*w)), t=Math.min(0,Math.max(1-h,.5-f.y*h));
+  return {w:w/A*100,h:h*100,l:l/A*100,t:t*100};}
+/** <img> for a person's avatar in a frame of aspect A, honouring the saved framing. */
+function avImg(p,A=1){const m=avatarMedia(p); if(!m) return ''; const c=cropPct(m,A);
+  return c?`<img src="${esc(m.url)}" alt="" style="position:absolute;max-width:none;object-fit:fill;width:${c.w}%;height:${c.h}%;left:${c.l}%;top:${c.t}%">`:`<img src="${esc(m.url)}" alt="">`;}
 function avatarUrl(p){const imgs=(p.media||[]).filter(isImg); const m=imgs.find(m=>m.profile)||imgs[0]; return m?m.url:null;}
 const homePerson=()=>Object.values(S.persons).find(p=>p.home);
 function goHome(){const h=homePerson(); if(h) setFocus(h.id); else {const first=Object.values(S.persons).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))[0]; if(first) setFocus(first.id);} ui.sel=null; ui.treeKey=null; ui.plQuery=''; if(location.hash!=='#trad') location.hash='trad'; else renderAll(true); window.scrollTo(0,0);}
@@ -195,7 +207,7 @@ function personLabel(p){const ls=lifespan(p); return fullName(p)+(ls?' ('+ls.rep
 /* ============ Router ============ */
 const VIEWS={start:renderStart,trad:renderTree,solfjader:renderFan,personer:renderPersons,slaktskap:renderRel,personkort:renderCard,dubbletter:renderDups,tidslinje:renderTimeline,karta:renderMap,kallor:renderSources,import:renderImport};
 const NAVMAP={personkort:'personer',dubbletter:'personer'};
-function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} if(h==='exempel'){ui.pendingDemo=true; location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); {const mb=$('#moreBtn'); if(mb){const inMore=!!document.querySelector('#morePop a.on'); mb.classList.toggle('on',inMore); mb.firstChild.textContent=inMore?document.querySelector('#morePop a.on b').textContent+' ':'Mer '; $('#morePop').classList.remove('open');}} $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
+function route(){const h=location.hash.slice(1); if(h.startsWith('vy-')){ui.pendingView=h.slice(3); location.replace('#trad'); return;} if(h==='exempel'){ui.pendingDemo=true; location.replace('#trad'); return;} ui.view=VIEWS[h]?h:'start'; followSelection(); const nv=NAVMAP[ui.view]||ui.view; document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===nv)); {const mb=$('#moreBtn'); if(mb){const inMore=!!document.querySelector('#morePop a.on'); mb.classList.toggle('on',inMore); mb.firstChild.textContent=inMore?document.querySelector('#morePop a.on b').textContent+' ':'Mer '; $('#morePop').classList.remove('open');}} $('#view').scrollTop=0; ui.treeKey=null; mapState.drawn=false; renderAll(true);}
 window.addEventListener('hashchange',route);
 let lastView=null;
 function renderAll(force){
@@ -213,6 +225,13 @@ function renderAll(force){
   try{ VIEWS[ui.view](force||lastView!==ui.view); lastView=ui.view; }
   catch(e){ console.error(e); lastView=null;
     $('#view').innerHTML=`<div class="empty"><h2>Något gick fel på den här sidan</h2><p>Dina uppgifter är orörda. Prova att ladda om sidan. Om felet kommer tillbaka: skicka texten här nedanför till den som sköter sidan.</p><p class="muted small" style="font-family:monospace">${esc(APP_VERSION)} · ${esc(ui.view)} · ${esc(String(e&&e.message||e))}</p><p><button class="btn primary" onclick="location.reload()">Ladda om</button></p></div>`; }
+}
+/* When switching tab with a person selected, the new tab shows that person. */
+function followSelection(){
+  const id=ui.sel&&ui.sel.type==='person'?ui.sel.id:null; if(!id||!P(id)) return;
+  if(ui.view==='solfjader'||ui.view==='personkort') setFocus(id);
+  if(ui.view==='trad'){ if(ui.treeLock) ui.treeZoomTo=id; else if(ui.focus!==id){setFocus(id); ui.treeZoomTo=id;} }
+  if(ui.view==='slaktskap'){const h=homePerson(); ui.relB=id; if(!ui.relA||ui.relA===id) ui.relA=h&&h.id!==id?h.id:null;}
 }
 function setFocus(id){ui.focus=id; try{localStorage.setItem('sa-focus',id)}catch(e){} }
 function select(type,id){ui.sel=id?{type,id}:null; renderAll();}
@@ -243,9 +262,107 @@ function emptyState(){
 }
 
 /* ============ TREE ============ */
-const CW=224,CH=100; // card size; the left part holds a 3:4 portrait (PW×PH)
-const PX=12,PY=10,PW=60,PH=80;
+const KIN_LEVELS=['Inga','Syskon','Kusiner','Sysslingar','Tremänningar','Fyrmänningar','Femmänningar','Sexmänningar','Sjumänningar','Åttamänningar','Niomänningar'];
+// Card size (big or small); the left part of a card holds a 3:4 portrait (PW×PH)
+let CW=224,CH=100,PX=12,PY=10,PW=60,PH=80,MAXC=17,SMALL=false;
+function setCardSize(small){SMALL=!!small; [CW,CH,PX,PY,PW,PH,MAXC]=small?[156,74,7,8,42,58,12]:[224,100,12,10,60,80,17];}
+
+/* Tree layout: ancestors above, the focus person's row, descendants below, and side
+   branches (siblings, cousins …) packed outside the direct line. Couples sit side by side. */
+function treeLayout(F,showSp){
+  const ROW=CH+56, SEP=20, CG=14, nodes=[], links=[];
+  const W=d=>CW+((d&&d.sps)?d.sps.length:0)*(CW+CG);
+  const sepF=(a,b)=>(W(a.data)+W(b.data))/2+(a.parent===b.parent?SEP:SEP*2);
+  // ancestors
+  const anc=(p,depth)=>{const n={p,children:[]}; if(depth<ui.ancGen){for(const rel of ['father','mother']){const q=P(p[rel+'Id']); if(q) n.children.push(anc(q,depth+1)); else if(Store.canEdit&&!p[rel+'Id']&&depth<2) n.children.push({ghost:rel,of:p.id,children:[]});}} return n;};
+  const aRoot=d3.hierarchy(anc(F,0));
+  d3.tree().nodeSize([1,ROW]).separation((a,b)=>(CW+18)*(a.parent===b.parent?1:1.12))(aRoot);
+  aRoot.each(n=>{n.y=-n.depth*ROW; if(n.depth>0){nodes.push(n); links.push({type:'anc',s:n.parent,t:n});}});
+  // focus partners: man to the left, woman to the right
+  const parts=showSp?partners(F):[]; const pPos={}; let li=0, ri=0;
+  parts.forEach(sp=>{const left=sp.sex==='M'&&F.sex!=='M'; const x=left?-(++li)*(CW+34):(++ri)*(CW+34);
+    const n={data:{p:sp,partner:true},x,y:0}; nodes.push(n); pPos[sp.id]=n; links.push({type:'cp',x1:x<0?x+CW/2:CW/2,x2:x<0?-CW/2:x-CW/2,y:0});});
+  const shown=new Set([F.id]); aRoot.each(n=>{if(n.data.p) shown.add(n.data.p.id);}); parts.forEach(q=>shown.add(q.id));
+  // a person with partners and (step)children, down to depth maxD
+  const mk=(p,dd,maxD)=>{shown.add(p.id);
+    const sps=showSp?partners(p).filter(q=>!shown.has(q.id)):[]; sps.forEach(q=>shown.add(q.id));
+    let kids=[]; if(dd<maxD){kids=children(p.id); if(showSp) for(const q of sps) for(const c of children(q.id)) if(!kids.includes(c)) kids.push(c);}
+    kids=kids.filter(c=>!shown.has(c.id)); kids.forEach(c=>shown.add(c.id));
+    return {p,sps,children:kids.map(c=>mk(c,dd+1,maxD))};};
+  // place a laid-out node: couple centred on c, person card first, partners to the right
+  const expand=(n,c,y)=>{const w=W(n.data); n.y=y; n.x=c-(w-CW)/2; n.spx=n.data.sps.map((q,i)=>n.x+(i+1)*(CW+CG)); nodes.push(n);
+    n.data.sps.forEach((q,i)=>{nodes.push({data:{p:q,partner:true},x:n.spx[i],y}); links.push({type:'cp',x1:(i?n.spx[i-1]:n.x)+CW/2,x2:n.spx[i]-CW/2,y});});};
+  // where the line down to child n starts
+  const srcOf=n=>{const pn=n.parent, c=n.data.p, pp=pn.data.p;
+    const own=c.fatherId===pp.id||c.motherId===pp.id, other=c.fatherId===pp.id?c.motherId:c.fatherId;
+    const i=pn.data.sps.findIndex(q=>q.id===(own?other:(c.fatherId&&pn.data.sps.some(q=>q.id===c.fatherId)?c.fatherId:c.motherId)));
+    if(own&&i>=0) return {x:pn.spx[i]-(CW+CG)/2,y:pn.y,mid:true};
+    if(!own&&i>=0) return {x:pn.spx[i],y:pn.y};
+    return {x:pn.x,y:pn.y};};
+  // descendants of the focus person
+  let rootKids=[]; if(ui.descGen>0){rootKids=children(F.id); if(showSp) for(const q of parts) for(const c of children(q.id)) if(!rootKids.includes(c)) rootKids.push(c);}
+  rootKids=rootKids.filter(c=>!shown.has(c.id)); rootKids.forEach(c=>shown.add(c.id));
+  const dRoot=d3.hierarchy({p:F,sps:[],children:rootKids.map(c=>mk(c,1,ui.descGen))});
+  d3.tree().nodeSize([1,ROW]).separation(sepF)(dRoot);
+  const withKids=parts.find(q=>children(F.id).some(c=>c.fatherId===q.id||c.motherId===q.id))||parts[0];
+  const shift=withKids?pPos[withKids.id].x/2:0;
+  dRoot.each(n=>{if(n.depth>0) expand(n,n.x+shift,n.depth*ROW);});
+  dRoot.each(n=>{if(n.depth===0) return;
+    if(n.parent.depth===0){const c=n.data.p, own=c.fatherId===F.id||c.motherId===F.id, other=own?(c.fatherId===F.id?c.motherId:c.fatherId):null;
+      let s0={x:0,y:0}; if(other&&pPos[other]) s0={x:pPos[other].x/2,y:0,mid:true}; else if(!own){const q=pPos[c.fatherId]||pPos[c.motherId]; if(q) s0={x:q.x,y:0};}
+      links.push({type:'desc',s:s0,t:n});}
+    else links.push({type:'desc',s:srcOf(n),t:n});});
+  // side branches. Siblings may bring their descendants; further out, branches stop at the focus's generation.
+  {const occ={}, GAPX=SEP*2;
+   const occAdd=(r,l,rr)=>{const o=occ[r]||(occ[r]=[l,rr]); if(l<o[0]) o[0]=l; if(rr>o[1]) o[1]=rr;};
+   for(const n of nodes) occAdd(Math.round(n.y/ROW),n.x-CW/2,n.x+CW/2); occAdd(0,-CW/2,CW/2);
+   const sideDefault=parts.some(q=>!(q.sex==='M'&&F.sex!=='M'))?-1:1;
+   const lim=Math.min(ui.kinDeg,ui.ancGen);
+   const groups=[]; aRoot.each(n=>{ if(n.depth>=1&&n.depth<=lim&&n.data.p){ let g0=groups.find(g=>g.child===n.parent); if(!g0){g0={child:n.parent,d:n.depth,par:[]}; groups.push(g0);} g0.par.push(n);} });
+   groups.sort((a,b)=>a.d-b.d);
+   for(const g0 of groups){
+     const pos={}; for(const n of g0.par) pos[n.data.p.id]=n;
+     const kids=[]; for(const n of g0.par) for(const c of children(n.data.p.id)) if(!shown.has(c.id)&&!kids.includes(c)) kids.push(c);
+     if(!kids.length) continue; kids.forEach(c=>shown.add(c.id));
+     const xs=g0.par.map(n=>n.x), mx=xs.reduce((a,b)=>a+b,0)/xs.length, py=g0.par[0].y;
+     const dir=mx<-1?-1:mx>1?1:sideDefault;
+     const maxD=g0.d===1?1+ui.descGen:g0.d;
+     const block=d3.hierarchy({root:true,sps:[],children:kids.map(k=>mk(k,1,maxD))});
+     d3.tree().nodeSize([1,ROW]).separation(sepF)(block);
+     const bn=block.descendants().filter(n=>n.depth>0);
+     const ext={}; for(const n of bn){const r=Math.round(py/ROW)+n.depth, w=W(n.data); const e=ext[r]||(ext[r]=[n.x-w/2,n.x+w/2]); if(n.x-w/2<e[0]) e[0]=n.x-w/2; if(n.x+w/2>e[1]) e[1]=n.x+w/2;}
+     const kx=bn.filter(n=>n.depth===1).map(n=>n.x); let sh=mx-(Math.min(...kx)+Math.max(...kx))/2;
+     for(const [r,e] of Object.entries(ext)){const o=occ[r]; if(!o) continue;
+       if(dir<0) sh=Math.min(sh,o[0]-GAPX-e[1]); else sh=Math.max(sh,o[1]+GAPX-e[0]);}
+     for(const n of bn){ expand(n,n.x+sh,py+n.depth*ROW); const w=W(n.data); occAdd(Math.round(n.y/ROW),n.x-CW/2,n.x-CW/2+w);
+       if(n.depth===1){const fa=pos[n.data.p.fatherId], mo=pos[n.data.p.motherId]; const q=fa&&mo?{x:(fa.x+mo.x)/2,y:py}:(fa||mo); links.push({type:'desc',s:{x:q.x,y:q.y},t:n});}
+       else links.push({type:'desc',s:srcOf(n),t:n}); }
+   }}
+  nodes.push({data:{p:F},x:0,y:0,focus:true});
+  // give each family its own lane in the gap between two rows, so lines never merge
+  {const G=new Map();
+   for(const l of links){ if(l.type==='cp') continue;
+     const top=l.type==='anc'?l.t.y:l.s.y, key=l.type==='anc'?l.s:(l.s.x+'|'+l.s.y);
+     let g=G.get(key); if(!g){g={top,lo:Infinity,hi:-Infinity,ls:[]}; G.set(key,g);}
+     g.lo=Math.min(g.lo,l.s.x,l.t.x); g.hi=Math.max(g.hi,l.s.x,l.t.x); g.ls.push(l);}
+   const byGap={}; for(const g of G.values()) (byGap[g.top]=byGap[g.top]||[]).push(g);
+   for(const gs of Object.values(byGap)){ gs.sort((a,b)=>a.lo-b.lo); const lanes=[];
+     for(const g of gs){let i=lanes.findIndex(r=>r<g.lo-14); if(i<0){i=lanes.length; lanes.push(0);} lanes[i]=g.hi; g.lane=i;}
+     const nL=lanes.length, step=nL>1?Math.min(9,(ROW-CH-14)/(nL-1)):0;
+     for(const g of gs){const my=g.top+ROW/2+(g.lane-(nL-1)/2)*step; for(const l of g.ls) l.my=my;}}}
+  return {nodes,links,aRoot};
+}
 let treeZoom=null;
+/** Zoom the tree onto a person. If they aren't in the current tree, rebuild it around them (unless locked). */
+function treeGoTo(id){
+  if(!id||!P(id)) return;
+  const pos=ui.treePos&&ui.treePos.get(id);
+  if(!pos){ if(ui.treeLock){toast(`${fullName(P(id))} syns inte i det låsta trädet.`,4000);return;}
+    setFocus(id); ui.treeKey=null; ui.treeZoomTo=id; select('person',id); return; }
+  const el0=$('#treeSvg'), t=d3.zoomTransform(el0), k=Math.max(t.k,.95), W=el0.clientWidth, H=el0.clientHeight;
+  d3.select(el0).transition().duration(450).call(treeZoom.transform,d3.zoomIdentity.translate(W/2-pos.x*k,(H+50)/2-pos.y*k).scale(k));
+  if(!(ui.sel&&ui.sel.id===id)) select('person',id);
+}
 function renderTree(fresh){
   const v=$('#view');
   if(!Object.keys(S.persons).length){v.innerHTML=emptyState();ui.treeKey=null;return;}
@@ -257,15 +374,26 @@ function renderTree(fresh){
         <span id="tTrees" class="ctl"></span>
         <span class="ctl">Anor <select id="tAnc">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${n===ui.ancGen?'selected':''}>${n}</option>`).join('')}</select></span>
         <span class="ctl">Ättlingar <select id="tDesc">${[0,1,2,3,4,5,6,7,8,9,10].map(n=>`<option ${n===ui.descGen?'selected':''}>${n}</option>`).join('')}</select></span>
+        <span class="ctl" title="Hur långt ut åt sidan trädet ska visa släktingar">Sidogrenar <select id="tKin">${KIN_LEVELS.map((t,n)=>`<option value="${n}" ${n===ui.kinDeg?'selected':''}>${t}</option>`).join('')}</select></span>
+        <label class="ctl chk" title="Visa makar och sambor, och deras barn"><input type="checkbox" id="tSp" ${ui.showPartners!==false?'checked':''}> Partner</label>
+        <span class="ctl" title="Små kort får plats med fler personer">Kort <select id="tSize">${[['auto','Auto'],['big','Stora'],['small','Små']].map(([v,t])=>`<option value="${v}" ${v===(ui.cardSize||'auto')?'selected':''}>${t}</option>`).join('')}</select></span>
         <button class="btn sm" id="tLock"></button>
-        <button class="btn sm" id="tFit">Centrera</button>
+        <button class="btn sm" id="tMe" title="Zooma in på dig">★ Jag</button>
+        <button class="btn sm" id="tSel" title="Zooma in på den markerade personen">⌖ Markerad</button>
+        <button class="btn sm" id="tFit" title="Visa hela trädet">Visa hela</button>
         <button class="btn sm" id="tPrint">⎙ Skriv ut / spara</button>
         ${Store.canEdit?'<button class="btn sm primary" onclick="openPersonModal()">+ Person</button>':''}
         <span id="tView"></span>
       </div></div>`;
     $('#tAnc').onchange=e=>{ui.ancGen=+e.target.value;ui.treeKey=null;renderTree();};
     $('#tDesc').onchange=e=>{ui.descGen=+e.target.value;ui.treeKey=null;renderTree();};
+    $('#tKin').onchange=e=>{ui.kinDeg=+e.target.value;ui.treeKey=null;renderTree();};
     $('#tFit').onclick=()=>{ui.treeKey=null;renderTree();};
+    $('#tSp').onchange=e=>{ui.showPartners=e.target.checked;ui.treeKey=null;renderTree();};
+    $('#tSize').onchange=e=>{ui.cardSize=e.target.value;ui.treeKey=null;renderTree();};
+    $('#tMe').onclick=()=>{const h=homePerson(); if(!h){toast('Välj vem du är under Inställningar eller med ”Det här är jag” på ditt personkort.',5000);return;} treeGoTo(h.id);};
+    $('#tSel').onclick=()=>{const id=ui.sel&&ui.sel.type==='person'?ui.sel.id:ui.focus; treeGoTo(id);};
+    $('#tfName').onclick=()=>treeGoTo(ui.focus);
     $('#tLock').onclick=()=>{ui.treeLock=!ui.treeLock; toast(ui.treeLock?'Trädet är låst. Klicka på vem du vill och läs – trädet står kvar.':'Trädet är upplåst. Ett klick på en person bygger om trädet kring den personen.',4500); renderTree();};
     $('#tPrint').onclick=()=>printChart($('#treeSvg'),'Släktträd för '+fullName(P(ui.focus)),'klansagan-tree');
     const svg=d3.select('#treeSvg');
@@ -282,40 +410,23 @@ function renderTree(fresh){
    const lk=$('#tLink'); if(lk) lk.onclick=()=>linkModal(ui.focus);}
   const av0=activeView(); $('#tView').innerHTML=av0?`<span class="vchip">Vy: <b>${esc(av0.name)}</b> · ${HIDDEN.size} dolda <button class="btn sm ghost" onclick="setActiveView(null)">Visa alla</button></span>`:'';
   const svg=d3.select('#treeSvg'), g=svg.select('g.vp');
-  const nodes=[],links=[];
-  // ancestors
-  const anc=(p,depth)=>{const n={p,children:[]}; if(depth<ui.ancGen){for(const rel of ['father','mother']){const q=P(p[rel+'Id']); if(q) n.children.push(anc(q,depth+1)); else if(Store.canEdit&&!p[rel+'Id']) n.children.push({ghost:rel,of:p.id,children:[]});}} return n;};
-  const aRoot=d3.hierarchy(anc(F,0));
-  d3.tree().nodeSize([CW+18,CH+56]).separation((a,b)=>a.parent===b.parent?1:1.12)(aRoot);
-  aRoot.each(n=>{n.y=-n.depth*(CH+56); if(n.depth>0){nodes.push(n); links.push({type:'anc',s:n.parent,t:n});}});
-  // partners of focus
-  // couples: man to the left, woman to the right (same order as father/mother everywhere)
-  const parts=partners(F); const pPos={}; let li=0, ri=0;
-  parts.forEach(sp=>{const left=sp.sex==='M'&&F.sex!=='M'; const x=left?-(++li)*(CW+34):(++ri)*(CW+34);
-    const n={data:{p:sp,partner:true},x,y:0}; nodes.push(n); pPos[sp.id]=n; links.push({type:'sp',x2:x});});
-  // descendants
-  const dRoot=d3.hierarchy((function desc(p,depth){return {p,children:depth<ui.descGen?children(p.id).map(c=>desc(c,depth+1)):[]};})(F,0));
-  d3.tree().nodeSize([CW+18,CH+56])(dRoot);
-  const withKids=parts.find(sp=>children(F.id).some(c=>c.fatherId===sp.id||c.motherId===sp.id))||parts[0];
-  const shift=withKids?pPos[withKids.id].x/2:0;
-  dRoot.each(n=>{n.y=n.depth*(CH+56); if(n.depth>0){n.x+=shift; nodes.push(n);}});
-  dRoot.each(n=>{if(n.depth>0){
-    let sx=n.parent.depth===0?0:n.parent.x, sy=n.parent.y;
-    if(n.parent.depth===0){const other=n.data.p.fatherId===F.id?n.data.p.motherId:n.data.p.fatherId; if(other&&pPos[other]) sx=pPos[other].x/2; }
-    links.push({type:'desc',s:{x:sx,y:sy,mid:n.parent.depth===0&&sx!==0},t:n});
-  }});
-  nodes.push({data:{p:F},x:0,y:0,focus:true});
+  const showSp=ui.showPartners!==false;
+  setCardSize(ui.cardSize==='small'); let LY=treeLayout(F,showSp);
+  if((ui.cardSize||'auto')==='auto'&&LY.nodes.length>40){setCardSize(true); LY=treeLayout(F,showSp);}
+  const {nodes,links,aRoot}=LY;
+  svg.select('#avclip rect').attr('x',PX).attr('y',PY).attr('width',PW).attr('height',PH);
+  svg.classed('small',SMALL);
 
   // links
   const lp=l=>{
-    if(l.type==='sp') return l.x2>0?`M${CW/2},0H${l.x2-CW/2}`:`M${-CW/2},0H${l.x2+CW/2}`;
-    if(l.type==='anc'){const y1=l.s.y-CH/2,y2=l.t.y+CH/2,my=(y1+y2)/2;return `M${l.s.x},${y1}V${my}H${l.t.x}V${y2}`;}
-    const y1=l.s.mid?l.s.y:l.s.y+CH/2,y2=l.t.y-CH/2,my=l.s.y+CH/2+(y2-(l.s.y+CH/2))/2;return `M${l.s.x},${y1}V${my}H${l.t.x}V${y2}`;
+    if(l.type==='cp') return `M${l.x1},${l.y}H${l.x2}`;
+    if(l.type==='anc') return `M${l.s.x},${l.s.y-CH/2}V${l.my}H${l.t.x}V${l.t.y+CH/2}`;
+    return `M${l.s.x},${l.s.mid?l.s.y:l.s.y+CH/2}V${l.my}H${l.t.x}V${l.t.y-CH/2}`;
   };
   g.selectAll('*').remove();
   // generation labels
   for(let d=1; d<=ui.ancGen; d++){ if(aRoot.descendants().some(n=>n.depth===d&&n.data.p)){ const xs=aRoot.descendants().filter(n=>n.depth===d).map(n=>n.x); g.append('text').attr('class','gen-label').attr('x',Math.min(...xs)-CW/2).attr('y',-d*(CH+56)-CH/2-8).text(['','Föräldrar','Farföräldrar & morföräldrar','Farfars- och morfarsföräldrar','Generation 4','Generation 5','Generation 6'][d]||('Generation '+d)); } }
-  g.selectAll('path.link').data(links).join('path').attr('class',l=>'link'+(l.type==='sp'?' sp':'')).attr('d',lp);
+  g.selectAll('path.link').data(links).join('path').attr('class',l=>'link'+(l.type==='cp'?' sp':'')).attr('d',lp);
   const sel=ui.sel&&ui.sel.type==='person'?ui.sel.id:null;
   const cards=g.selectAll('g.node').data(nodes).join('g').attr('transform',n=>`translate(${n.x-CW/2},${n.y-CH/2})`);
   cards.each(function(n){
@@ -331,8 +442,10 @@ function renderTree(fresh){
     el.attr('class','card'+(n.focus?' focus':'')+(sel===p.id?' sel':''));
     el.append('rect').attr('class','bg').attr('width',CW).attr('height',CH).attr('rx',9);
     el.append('rect').attr('width',5).attr('height',CH-16).attr('x',0).attr('y',8).attr('rx',2).style('fill',sexColor(p));
-    const av=avatarUrl(p), tx=PX+PW+12, maxc=17;
-    if(av){el.append('image').attr('href',av).attr('x',PX).attr('y',PY).attr('width',PW).attr('height',PH).attr('preserveAspectRatio','xMidYMid slice').attr('clip-path','url(#avclip)');}
+    const av=avatarUrl(p), tx=PX+PW+(SMALL?8:12), maxc=MAXC, LH=SMALL?13:16, Y0=SMALL?20:28;
+    if(av){const c=cropPct(avatarMedia(p),PW/PH), im=el.append('image').attr('href',av).attr('clip-path','url(#avclip)');
+      if(c) im.attr('x',PX+c.l/100*PW).attr('y',PY+c.t/100*PH).attr('width',c.w/100*PW).attr('height',c.h/100*PH).attr('preserveAspectRatio','none');
+      else im.attr('x',PX).attr('y',PY).attr('width',PW).attr('height',PH).attr('preserveAspectRatio','xMidYMin slice');}
     else{const ph=el.append('g').attr('class','ph-slot'+(Store.canEdit?' can':''));
       ph.append('rect').attr('x',PX).attr('y',PY).attr('width',PW).attr('height',PH).attr('rx',6);
       ph.append('text').attr('class','ini').attr('x',PX+PW/2).attr('y',PY+PH/2+2).attr('text-anchor','middle').text(initials(p));
@@ -341,23 +454,24 @@ function renderTree(fresh){
         ph.on('click',ev=>{ev.stopPropagation(); select('person',p.id); setTimeout(()=>{const i=$('#uplAv'); if(i) i.click();},30);});}}
     const nm=fullName(p), words=nm.split(' '), lines=['']; for(const w of words){const cur=lines[lines.length-1]; if(cur&&(cur+' '+w).length>maxc){if(lines.length===2){lines[1]+=' '+w; continue;} lines.push(w);} else lines[lines.length-1]=cur?cur+' '+w:w;}
     const L=lines.map(l=>l.length>maxc+1?l.slice(0,maxc)+'…':l);
-    const t0=el.append('text').attr('class','nm').attr('x',tx).attr('y',28); L.forEach((l,i)=>t0.append('tspan').attr('x',tx).attr('dy',i?16:0).text(l)); t0.append('title').text(nm);
-    const yy=28+(L.length-1)*16;
-    el.append('text').attr('class','yr').attr('x',tx).attr('y',yy+20).text(lifespan(p)||'år okänt');
-    const pl=placeName(p.birthPlace)||p.occupation||''; el.append('text').attr('class','pl').attr('x',tx).attr('y',yy+37).text(pl.length>maxc+3?pl.slice(0,maxc+2)+'…':pl);
+    const t0=el.append('text').attr('class','nm').attr('x',tx).attr('y',Y0); L.forEach((l,i)=>t0.append('tspan').attr('x',tx).attr('dy',i?LH:0).text(l)); t0.append('title').text(nm);
+    const yy=Y0+(L.length-1)*LH;
+    el.append('text').attr('class','yr').attr('x',tx).attr('y',yy+(SMALL?15:20)).text(lifespan(p)||'år okänt');
+    const pl=placeName(p.birthPlace)||p.occupation||''; el.append('text').attr('class','pl').attr('x',tx).attr('y',yy+(SMALL?28:37)).text(pl.length>maxc+3?pl.slice(0,maxc+2)+'…':pl);
     const nc=(p.citations||[]).length; if(!nc){el.append('circle').attr('cx',CW-11).attr('cy',11).attr('r',3.5).style('fill','var(--warn)').append('title').text('Ingen källa ännu');}
-    if(Store.canEdit){const eg=el.append('g').attr('class','eye').attr('transform',`translate(${CW-30},${CH-26})`); eg.append('rect').attr('width',22).attr('height',20).attr('rx',5);
+    if(Store.canEdit){const eg=el.append('g').attr('class','eye').attr('transform',`translate(${CW-(SMALL?26:30)},${CH-(SMALL?24:26)})`); eg.append('rect').attr('width',22).attr('height',20).attr('rx',5);
       eg.append('path').attr('d','M4 10s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5zM4 4l14 12').attr('transform','translate(0,0)');
       eg.append('title').text('Dölj i vyn…'); eg.on('click',ev=>{ev.stopPropagation(); hideModal(p);});}
     el.on('click',()=>{ if(n.focus){select('person',p.id);} else if(ui.treeLock){ui.treePan=p.id; select('person',p.id);} else { const t=d3.zoomTransform($('#treeSvg')); ui.treeAnchor={x:t.applyX(n.x),y:t.applyY(n.y),k:t.k}; setFocus(p.id); ui.treeKey=null; select('person',p.id);} });
   });
   // locked tree: only the camera moves, to the person that was clicked
   ui.treeShown=new Set(nodes.filter(n=>n.data&&n.data.p).map(n=>n.data.p.id));
+  ui.treePos=new Map(nodes.filter(n=>n.data&&n.data.p).map(n=>[n.data.p.id,{x:n.x,y:n.y}]));
   if(ui.treePan){const n=nodes.find(x=>x.data&&x.data.p&&x.data.p.id===ui.treePan); ui.treePan=null;
     if(n){const el0=$('#treeSvg'), t=d3.zoomTransform(el0), W=el0.clientWidth, H=el0.clientHeight;
       svg.transition().duration(400).call(treeZoom.transform,d3.zoomIdentity.translate(W/2-n.x*t.k,H/2-n.y*t.k).scale(t.k));}}
   // fit
-  const key=F.id+'|'+ui.ancGen+'|'+ui.descGen;
+  const key=[F.id,ui.ancGen,ui.descGen,ui.kinDeg,showSp,SMALL].join('|');
   if(ui.treeKey!==key&&ui.treeAnchor){
     ui.treeKey=key; const a=ui.treeAnchor; ui.treeAnchor=null;
     svg.transition().duration(350).call(treeZoom.transform,d3.zoomIdentity.translate(a.x,a.y).scale(a.k));
@@ -373,6 +487,7 @@ function renderTree(fresh){
     const t=d3.zoomIdentity.translate(W/2-k*cx,(H+50)/2-k*cy).scale(k);
     svg.transition().duration(fresh?0:450).call(treeZoom.transform,t);
   }
+  if(ui.treeZoomTo){const id=ui.treeZoomTo; ui.treeZoomTo=null; setTimeout(()=>treeGoTo(id),fresh?0:470);}
 }
 
 /* ============ PERSONS ============ */
@@ -449,11 +564,11 @@ function personPanel(p){
   const cites=p.citations||[];
   const aboutLabel=a=>{if(!a) return 'Allmänt'; if(a.startsWith('event:')){const e=(p.events||[]).find(e=>'event:'+e.id===a); return e?e.type+(e.date?' '+e.date:''):'Händelse';} return a;};
   return `<div class="ph"><div class="top">
-      ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?`<img src="${esc(av)}" alt="">`:`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" accept="image/*" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?`<img src="${esc(av)}" alt="">`:esc(initials(p))}</div>`}
+      ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?avImg(p):`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" accept="image/*" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div>`}
       <div style="flex:1;min-width:0"><h3>${fullHtml(p)}</h3><div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
       ${closeBtn}</div>
     <div class="acts">
-      <button class="btn sm" data-act="card">Personkort</button>
+      <button class="btn sm" data-act="card">Personkort</button>${ed&&av?'<button class="btn sm" data-act="photo" title="Flytta och zooma bilden så att ansiktet hamnar rätt">Justera bild</button>':''}
       <button class="btn sm" data-act="focus">Visa i trädet</button>
       <button class="btn sm" data-act="rel">Hur är vi släkt?</button>
       ${ed?'<button class="btn sm" data-act="hide" title="Dölj personen eller en hel gren i en vy">👁 Dölj i vyn…</button>':''}
@@ -522,6 +637,7 @@ function bindPersonPanel(p){
     if(act==='addev') eventForm(p,null);
     if(act==='addcite') citeForm(p);
     if(act==='link') linkModal(p.id);
+    if(act==='photo') photoModal(p.id);
   });
   pn.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{
     if(b.dataset.add==='sibling'&&!p.fatherId&&!p.motherId){toast(`Syskon kopplas via föräldrarna. Lägg först till far eller mor till ${fullName(p)}.`,5000);return;}
@@ -595,7 +711,64 @@ async function uploadMedia(files,{profile}={}){
   const cur=clone(currentSelObj()); cur.media=cur.media||[];
   const hasProfile=cur.media.some(m=>m.profile);
   if(profile||(!hasProfile&&!cur.media.some(isImg))){ const first=added.find(isImg); if(first){cur.media.forEach(m=>delete m.profile); first.profile=true;} }
-  cur.media=cur.media.concat(added); Store.put(cur);
+  cur.media=cur.media.concat(added); await Store.put(cur);
+  if(cur.kind==='person'&&added.some(m=>m.profile)) autoFrame(cur.id);
+}
+/* ---- Face framing ---- */
+function loadImg(url){return new Promise((ok,bad)=>{const i=new Image(); if(!/^data:|^blob:/.test(url)) i.crossOrigin='anonymous'; i.onload=()=>ok(i); i.onerror=()=>bad(new Error('bilden kunde inte läsas')); i.src=url;});}
+let _faceDet=null;
+/** Find the largest face. Uses the browser's FaceDetector if present, else MediaPipe (loaded on demand). */
+async function detectFace(img){
+  if('FaceDetector' in window){try{const fs=await new window.FaceDetector({fastMode:false,maxDetectedFaces:5}).detect(img); if(fs.length){const b=fs.sort((a,c)=>c.boundingBox.width-a.boundingBox.width)[0].boundingBox; return {x:b.x,y:b.y,w:b.width,h:b.height};}}catch(e){}}
+  if(!_faceDet) _faceDet=(async()=>{const V='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+    const mp=await import(V+'/vision_bundle.mjs'); const fr=await mp.FilesetResolver.forVisionTasks(V+'/wasm');
+    return mp.FaceDetector.createFromOptions(fr,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite'},runningMode:'IMAGE',minDetectionConfidence:.4});})();
+  const det=await _faceDet; const r=det.detect(img).detections;
+  if(!r.length) return null; const b=r.sort((a,c)=>c.boundingBox.width-a.boundingBox.width)[0].boundingBox;
+  return {x:b.originX,y:b.originY,w:b.width,h:b.height};
+}
+/** Framing that puts a face slightly above centre of a 3:4 portrait, face ≈ 45% of the height. */
+function frameForFace(f,nw,nh){const s0=Math.max((3/4)/nw,1/nh), visH=f.h/.45, z=Math.min(6,Math.max(1,1/(s0*visH)));
+  return {x:(f.x+f.w/2)/nw,y:Math.min(1,(f.y+f.h/2+.08*Math.min(visH,nh))/nh),z,nw,nh};}
+async function findFrame(url){const img=await loadImg(url); const nw=img.naturalWidth,nh=img.naturalHeight; let f=null; try{f=await detectFace(img);}catch(e){console.warn('Ansiktsigenkänning ej tillgänglig',e);}
+  return {frame:f?frameForFace(f,nw,nh):null,nw,nh};}
+async function autoFrame(pid){
+  const p=P(pid), m=p&&avatarMedia(p); if(!m) return;
+  try{const {frame,nw,nh}=await findFrame(m.url); const q=clone(P(pid)), mm=avatarMedia(q); if(!mm) return;
+    mm.focus=frame||{x:.5,y:.35,z:1,nw,nh}; await Store.put(q);
+    toast(frame?'Bilden är centrerad på ansiktet.':'Hittade inget ansikte. Du kan flytta bilden själv.',5000,{label:'Justera',fn:()=>photoModal(pid)});
+  }catch(e){toast('Bilden är sparad. Vill du flytta den?',5000,{label:'Justera',fn:()=>photoModal(pid)});}
+}
+function photoModal(pid){
+  const p=P(pid), m=p&&avatarMedia(p); if(!m) return;
+  const W=240,H=320; let f=Object.assign({x:.5,y:.35,z:1},m.focus||{});
+  modal(`<h3>Justera bilden</h3>
+    <p class="muted" style="margin-top:-4px">Dra i bilden så att ansiktet hamnar i rutan. Zooma med reglaget eller mushjulet.</p>
+    <div class="cropwrap"><div class="cropbox" id="cropBox" style="width:${W}px;height:${H}px"><img id="cropImg" src="${esc(m.url)}" alt="" draggable="false"></div>
+      <div class="cropside"><div class="avatar" id="cropCircle" style="width:96px;height:96px;position:relative"><img src="${esc(m.url)}" alt=""></div><span class="muted small">Så blir den runda bilden</span>
+      <label class="f" style="width:100%"><span>Zoom</span><input type="range" id="cropZ" min="1" max="6" step="0.01" value="${f.z}"></label>
+      <button class="btn" id="cropAuto">✨ Hitta ansiktet automatiskt</button><span class="muted small" id="cropMsg"></span></div></div>
+    <div class="foot"><button class="btn" data-x>Avbryt</button><button class="btn primary" data-ok>Spara</button></div>`,
+  async(ov,close)=>{
+    const q=x=>ov.querySelector(x), img=q('#cropImg'), circ=q('#cropCircle img');
+    try{const i=await loadImg(m.url); f.nw=f.nw||i.naturalWidth; f.nh=f.nh||i.naturalHeight;}catch(e){f.nw=f.nw||W; f.nh=f.nh||H;}
+    const place=(el,A)=>{const c=cropPct({focus:f},A); Object.assign(el.style,{position:'absolute',maxWidth:'none',width:c.w+'%',height:c.h+'%',left:c.l+'%',top:c.t+'%'});};
+    const draw=()=>{place(img,W/H); place(circ,1); q('#cropZ').value=f.z;};
+    const clampF=()=>{f.x=Math.min(1,Math.max(0,f.x)); f.y=Math.min(1,Math.max(0,f.y)); f.z=Math.min(6,Math.max(1,f.z));};
+    draw();
+    const box=q('#cropBox'); let drag=null;
+    box.onpointerdown=e=>{drag={sx:e.clientX,sy:e.clientY,x:f.x,y:f.y}; box.setPointerCapture(e.pointerId);};
+    box.onpointermove=e=>{if(!drag) return; const c=cropPct({focus:f},W/H), wpx=c.w/100*W, hpx=c.h/100*H;
+      f.x=drag.x-(e.clientX-drag.sx)/wpx; f.y=drag.y-(e.clientY-drag.sy)/hpx; clampF(); draw();};
+    box.onpointerup=()=>{drag=null;};
+    box.onwheel=e=>{e.preventDefault(); f.z*=e.deltaY<0?1.08:1/1.08; clampF(); draw();};
+    q('#cropZ').oninput=e=>{f.z=+e.target.value; draw();};
+    q('#cropAuto').onclick=async()=>{const msg=q('#cropMsg'); msg.textContent='Letar efter ansikte…';
+      try{const r=await findFrame(m.url); if(r.frame){f=r.frame; draw(); msg.textContent='Klart!';} else msg.textContent='Hittade inget ansikte – flytta bilden själv.';}
+      catch(e){msg.textContent='Det gick inte att söka efter ansikten här.';}};
+    q('[data-x]').onclick=close;
+    q('[data-ok]').onclick=async()=>{const pq=clone(P(pid)), mm=avatarMedia(pq); if(mm){mm.focus={x:+f.x.toFixed(4),y:+f.y.toFixed(4),z:+f.z.toFixed(3),nw:f.nw,nh:f.nh}; await Store.put(pq);} close(); ui.treeKey=null; renderAll(true);};
+  });
 }
 function bindMedia(){
   const pn=$('#panel'); const o=currentSelObj(); if(!o) return;
@@ -1217,7 +1390,7 @@ function settingsModal(){
       <div class="hint">Startsidan, trädet och släktskap utgår från dig.</div></div>
     <div class="sgroup"><div class="slab">Namn</div>
       ${opt('nm','full',ui.nameMode,'Fullständigt namn','Lars Anders Godvig Englund')}
-      ${opt('nm','call',ui.nameMode,'Bara tilltalsnamn','Lars Englund – om tilltalsnamnet är markerat')}</div>
+      ${opt('nm','call',ui.nameMode,'Bara tilltalsnamn','Lars Englund. Saknas tilltalsnamn visas första förnamnet.')}</div>
     <div class="sgroup"><div class="slab">Utseende</div>
       ${opt('th','wood',themeName(),'Trä','Varm träbrun – standard')}${opt('th','light',themeName(),'Ljust','')}${opt('th','dark',themeName(),'Mörkt','')}
       <label class="sopt"><input type="checkbox" id="setLg" ${lg?'checked':''}><span><b>Större text</b></span></label></div>
@@ -1240,7 +1413,7 @@ function settingsModal(){
 const NUMW=['noll','ett','två','tre','fyra','fem','sex','sju','åtta','nio','tio','elva','tolv'];
 const numw=n=>NUMW[n]||String(n);
 function listJoin(a){return a.length<2?a.join(''):a.slice(0,-1).join(', ')+' och '+a[a.length-1];}
-function chipHTML(p,extra=''){const av=avatarUrl(p); return `<div class="pchip" data-card="${p.id}"><div class="avatar" style="border-color:${sexColor(p)}">${av?`<img src="${esc(av)}" alt="">`:esc(initials(p))}</div><div class="t"><b>${esc(fullName(p))}</b><span>${esc(lifespan(p))}${extra?' · '+extra:''}</span></div></div>`;}
+function chipHTML(p,extra=''){const av=avatarUrl(p); return `<div class="pchip" data-card="${p.id}"><div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div><div class="t"><b>${esc(fullName(p))}</b><span>${esc(lifespan(p))}${extra?' · '+extra:''}</span></div></div>`;}
 function bindChips(root,fn){root.querySelectorAll('[data-card]').forEach(el=>el.onclick=()=>fn(el.dataset.card));}
 function openCard(id){ui.cardId=id; if(location.hash!=='#personkort') location.hash='personkort'; else renderAll(true);}
 function personPicker(id,value,ph){return `<input class="t" id="${id}" list="dlAllP" value="${esc(value&&P(value)?personLabel(P(value)):'')}" placeholder="${ph}">`;}
@@ -1525,7 +1698,7 @@ function renderCard(){
   const evs=lifeEvents(p); const by=yearOf(p.birthDate);
   const story=storyOf(p);
   v.innerHTML=`<div class="pc">
-    <div class="pc-head"><div class="pc-photo" style="box-shadow:0 0 0 2px ${sexColor(p)},var(--shadow)">${av?`<img src="${esc(av)}" alt="">`:esc(initials(p))}</div>
+    <div class="pc-head"><div class="pc-photo" style="box-shadow:0 0 0 2px ${sexColor(p)},var(--shadow)">${av?avImg(p):esc(initials(p))}</div>
       <div><h1>${esc(fullName(p))}</h1><div class="life">${esc([p.birthDate?'* '+fmtDate(p.birthDate):'',p.deathDate?'† '+fmtDate(p.deathDate):''].filter(Boolean).join('   '))}${p.occupation?`<br>${esc(p.occupation)}`:''}</div>
       <div class="acts">${Store.canEdit?'<button class="btn" data-pc="edit">Redigera</button>':''}<button class="btn" data-pc="tree">Visa i trädet</button><button class="btn" data-pc="fan">Solfjäder</button><button class="btn" data-pc="rel">Hur är vi släkt?</button><button class="btn" data-pc="pdf">⎙ Skriv ut / PDF</button></div></div></div>
     <div class="pc-grid"><div>
@@ -1986,7 +2159,7 @@ function loadDemo(){
   Store.demo={saved:{persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views},focus:ui.focus,viewId:ui.viewId};
   const m=a=>Object.fromEntries(a.map(o=>[o.id,clone(o)]));
   ALL.persons=m(persons); ALL.places=m(places); ALL.sources=m(sources); ALL.views={};
-  ui.viewId=null; ui.focus='p_gustav1'; ui.ancGen=3; ui.descGen=2; ui.treeKey=null; ui.sel=null;
+  ui.viewId=null; ui.focus='p_gustav1'; ui.ancGen=10; ui.descGen=10; ui.treeKey=null; ui.sel=null;
   applyView();
   toast('Det här är ett exempel. Inget sparas – dina egna uppgifter ligger kvar orörda.',5000);
   if(location.hash!=='#trad') location.hash='trad'; else renderAll(true);
