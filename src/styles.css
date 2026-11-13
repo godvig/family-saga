@@ -1,3 +1,13 @@
+/* Fonts are served from this site (no Google Fonts): faster first paint, works fully offline,
+   and no visitor data goes to a third party. Both fonts are SIL Open Font License 1.1, see fonts/. */
+@font-face{font-family:'Fraunces';font-style:normal;font-display:swap;font-weight:100 900;src:url(../fonts/fraunces-latin-ext-opsz-normal.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-display:swap;font-weight:400;src:url(../fonts/ibm-plex-sans-latin-ext-400-normal.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-display:swap;font-weight:500;src:url(../fonts/ibm-plex-sans-latin-ext-500-normal.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-display:swap;font-weight:600;src:url(../fonts/ibm-plex-sans-latin-ext-600-normal.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'Fraunces';font-style:normal;font-display:swap;font-weight:100 900;src:url(../fonts/fraunces-latin-opsz-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-display:swap;font-weight:400;src:url(../fonts/ibm-plex-sans-latin-400-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-display:swap;font-weight:500;src:url(../fonts/ibm-plex-sans-latin-500-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-display:swap;font-weight:600;src:url(../fonts/ibm-plex-sans-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 :root{
   --paper:#f5f0e6; --paper2:#ede6d8; --card:#fffdf8; --ink:#2a2520; --ink2:#5d554b; --ink3:#8b8174;
   --line:#d9cfbd; --line2:#c6b9a2;
@@ -614,3 +624,15 @@ button.status:hover{background:rgba(127,110,80,.12)}
 .vimg input:checked+img,.vimg input:checked+span{border-color:var(--accent)}
 .f .lab{display:block;font-size:13px;color:var(--ink3);margin-bottom:2px}
 .pc .vms{margin-bottom:18px}
+
+/* Kinship path lit up in the tree */
+#treeSvg.relhl g.card:not(.hl),#treeSvg.relhl g.ghost{opacity:.28;transition:opacity .3s}
+#treeSvg.relhl path.link:not(.hl){opacity:.18}
+#treeSvg.relhl text.gen-label{opacity:.35}
+#treeSvg.relhl path.link.hl{stroke:var(--accent);stroke-width:3.4;stroke-dasharray:none;opacity:1}
+#treeSvg.relhl path.link.dot.hl{fill:var(--accent);stroke:var(--paper)}
+#treeSvg.relhl g.card.hl rect.bg{stroke:var(--accent);stroke-width:2.5}
+#treeSvg.relhl g.card.hl-end rect.bg{stroke-width:4;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--accent) 55%,transparent))}
+#relBanner{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:10px;max-width:calc(100% - 28px);background:var(--glass);border:1px solid var(--accent);border-radius:99px;padding:6px 8px 6px 16px;box-shadow:var(--shadow);font-size:14px}
+#relBanner span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:700px){#relBanner{left:12px;right:12px;transform:none;max-width:none;bottom:calc(76px + env(safe-area-inset-bottom));border-radius:14px;font-size:13px}#relBanner span{white-space:normal;flex:1}}

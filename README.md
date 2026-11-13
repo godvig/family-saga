@@ -10,7 +10,9 @@ Most genealogy tools are either subscription platforms that own your tree, or de
 
 The interface is in Swedish for now, and it understands Swedish sources (household examination rolls, parishes, patronymics). An English UI is next on the [roadmap](#roadmap).
 
-![Klansagan family tree view with the House of Vasa example](docs/screenshots/tree.png)
+![Klansagan demo: clicking through the House of Vasa, the tree glides to each new person, then the relationship calculator lights up how Sigrid and Władysław IV are related](docs/screenshots/demo.gif)
+
+*Click someone and the family rearranges around them; ask how two people are related and the chain lights up in the tree. Try it on the [House of Vasa example](https://klansagan.godvig.com/#exempel).*
 
 | Fan chart | Relationship calculator | Person card |
 |---|---|---|
@@ -54,6 +56,8 @@ To import your own family, start from [`examples/klansagan-import-example.xlsx`]
 - **Works on phones:** a bottom tab bar, a compact tree toolbar, person details as a sheet, touch zoom and pan.
 - **Easy to use:** a start page with three clear choices and a *simple mode* (big text, only Start, Tree and People) that a link can switch on with `?enkelt`. Mark yourself as "me" and kinship is counted from you. Light by default, dark mode on request.
 - **Call names (tilltalsnamn):** mark the name a person went by. It is underlined Swedish-style, and you can show short names everywhere (call name, or the first given name).
+- **Show the path in the tree:** the relationship calculator ("Hur är vi släkt?") opens the tree around the shared ancestor and lights up the chain between the two people, couples included, and dims everyone else.
+- **Animated tree:** when you click someone, they stay put under your cursor while the rest of the family glides into its new places (and the view eases them back towards the middle if they ended up near an edge); relatives who leave the view fade out and new ones fade in. Respects *reduce motion*.
 - **Voice memories:** record grandma telling a story straight from the browser (or upload an audio file) and attach it to a person, or to one of their photos. Recordings are small (Opus, about 180 KB a minute), kept on the device and, in shared trees, uploaded end-to-end encrypted like photos.
 - **Thumbnails:** photos get a small thumbnail when uploaded, so the tree and lists load only a few kilobytes per person; the full image is fetched when you open it.
 - **Photos framed on the face:** profile photos are centred on the face automatically (MediaPipe face detection, loaded on demand) and can be dragged and zoomed by hand.
@@ -83,6 +87,7 @@ index.html          markup shell, loads D3 + topojson from CDN
 src/core.js         pure logic: dates, GEDCOM dates, kinship terms, views, duplicate scoring
 src/app.js          UI: views, panels, import/export, storage adapters
 src/styles.css      design tokens (light + dark), layout
+fonts/              Fraunces + IBM Plex Sans (woff2, SIL OFL), served from the site itself
 data/world-50m.json Natural Earth countries (via world-atlas) for the map
 examples/           fictional import files
 tests/              Vitest suite for src/core.js
@@ -91,10 +96,11 @@ tests/              Vitest suite for src/core.js
 - **No framework, no bundler.** The app is vanilla JavaScript with [D3](https://d3js.org) for the tree, fan chart, timeline and map. [SheetJS](https://sheetjs.com) and [jsPDF](https://github.com/parallax/jsPDF) load lazily, only when you import or print.
 - **Data model:** four document kinds (`person`, `place`, `source`, `view`) stored as flat JSON documents. Relationships live on the person (`fatherId`, `motherId`, `spouseIds`), and events and citations are embedded.
 - **Storage adapters:**
-  - `localStorage` when the app runs standalone, such as on GitHub Pages.
+  - IndexedDB when the app runs standalone, such as on GitHub Pages: the archive text and photos, with no 5 MB cap (archives from older versions are moved over from `localStorage` automatically). Edits made just before a tab closes are also written synchronously as an emergency copy, so nothing is lost.
   - A realtime document store with per-user attribution when it runs as a Claude artifact.
   
   The rest of the app only sees an in-memory store.
+- **Cheap redraws:** every data change bumps a revision counter; the tree and person list compare it with what they last drew, so selecting someone only moves a highlight instead of rebuilding hundreds of cards (77 ms → 5 ms on a 1,500-person archive).
 - **Views** filter the store before rendering. All writes, exports and merges always operate on the full, unfiltered data, so hiding something can never orphan or overwrite it.
 - **Pure core:** everything that has a right answer (kinship terms, date handling, duplicate scoring, view filtering) lives in `src/core.js` and is unit tested.
 
@@ -119,14 +125,9 @@ To run your own: create a Supabase project, run the files in `supabase/migration
 
 ## Roadmap
 
-Done recently: encrypted sharing with publish and merge, version history, photo storage, phone layout, installable offline app (PWA).
+Done recently: encrypted sharing with publish and merge, version history, photo storage with thumbnails, voice memories, animated tree, kinship path in the tree, archive in IndexedDB, self-hosted fonts, phone layout, installable offline app (PWA).
 
-**Next, in order**
-1. Animated tree: cards glide to their new places when you change focus
-2. Kinship calculator highlights the path in the tree
-3. Performance: whole archive in IndexedDB, partial re-rendering, self-hosted fonts
-
-**Later**
+**Next**
 - Undo/redo everywhere; warning before leaving with unpublished changes
 - Drop or take a photo straight onto a tree card; photo gallery on the person card
 - GEDCOM import
@@ -140,4 +141,4 @@ Done recently: encrypted sharing with publish and merge, version history, photo 
 
 [AGPL-3.0](LICENSE) © Adam Englund. You can use, study and modify Klansagan freely. If you run a modified version as a network service, you must share your source code too.
 
-Map data: [Natural Earth](https://www.naturalearthdata.com) (public domain) via [world-atlas](https://github.com/topojson/world-atlas). The House of Vasa example is compiled from public historical sources (Svenskt biografiskt lexikon, Svenskt kvinnobiografiskt lexikon, the Royal Court). Dates follow the Julian calendar that Sweden used until 1753.
+Fonts: [Fraunces](https://github.com/undercasetype/Fraunces) and [IBM Plex Sans](https://github.com/IBM/plex), both under the SIL Open Font License 1.1 (see `fonts/`). Map data: [Natural Earth](https://www.naturalearthdata.com) (public domain) via [world-atlas](https://github.com/topojson/world-atlas). The House of Vasa example is compiled from public historical sources (Svenskt biografiskt lexikon, Svenskt kvinnobiografiskt lexikon, the Royal Court). Dates follow the Julian calendar that Sweden used until 1753.

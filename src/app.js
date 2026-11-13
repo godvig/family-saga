@@ -42,13 +42,16 @@ const HIST=[
 const ALL={persons:{},places:{},sources:{},views:{}};
 const S={persons:{},places:ALL.places,sources:ALL.sources,views:ALL.views};
 const KIND={person:'persons',place:'places',source:'sources',view:'views'};
-const APP_VERSION='2026-11-13.16';
+const APP_VERSION='2026-11-13.19';
 const ui={nameMode:(()=>{try{return localStorage.getItem('sa-names')||'full';}catch(e){return 'full';}})(),simple:false,view:'trad',focus:null,sel:null,ancGen:3,descGen:2,kinDeg:2,plFilter:'alla',plSort:'namn',plQuery:'',
   tlScope:'alla',tlHist:true,mapScope:'alla',mapRoute:true,placing:null,treeKey:null,viewId:null};
 try{const f=localStorage.getItem('sa-focus'); if(f) ui.focus=f; const v=localStorage.getItem('sa-viewid'); if(v) ui.viewId=v;}catch(e){}
 let HIDDEN=new Set();
 const activeView=()=>(ui.viewId&&ALL.views[ui.viewId])||null;
+/** Bumped whenever the data shown can have changed, so views can skip redrawing when nothing did. */
+let DATA_REV=0;
 function applyView(){
+  DATA_REV++;
   const v=activeView(); HIDDEN=v?computeHidden(v):new Set();
   const o={}; for(const id in ALL.persons) if(!HIDDEN.has(id)) o[id]=ALL.persons[id];
   S.persons=o; S.places=ALL.places; S.sources=ALL.sources; S.views=ALL.views;
@@ -76,7 +79,11 @@ const Store={
     }else{
       this.mode='local';
       if(Share.pendingJoin){const j=Share.pendingJoin; Share.pendingJoin=null; await Share.join(j.id,j.key);}
-      this.loadLocal(); this.loaded=true; purgeLegacyDemo(); applyView();
+      await this.loadLocal(); this.loaded=true; purgeLegacyDemo(); applyView();
+      // IndexedDB is asynchronous and may not finish while a page closes, so unsaved edits
+      // also get a synchronous emergency copy that the next start picks up.
+      const flush=()=>{ if(!this._dirty) return; try{localStorage.setItem('klansagan-unsaved',JSON.stringify({k:Share.lsKey(),data:{persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views}}));}catch(e){} this.saveNow(); };
+      addEventListener('pagehide',flush); document.addEventListener('visibilitychange',()=>{ if(document.hidden) flush(); });
       Share.updateStatus(); Share.startPolling();
       renderAll();
       migrateInline().then(ch=>{ if(ch){ Share.updateStatus(); renderAll(); } return backfillThumbs(); });
@@ -94,18 +101,44 @@ const Store={
       this.loaded=true; if(!this._purged){this._purged=true; purgeLegacyDemo();} applyView(); renderAll();
     },err=>{clearTimeout(timer); setStatus('err','Kunde inte läsa data ('+err.code+')'); this.loaded=true; renderAll();});
   },
-  loadLocal(){
-    try{const k=Share.lsKey(); const raw=localStorage.getItem(k)||(k==='klansagan-v1'?(localStorage.getItem('kinsaga-v1')||localStorage.getItem('slaktarkivet-v1')):null); ALL.persons={};ALL.places={};ALL.sources={};ALL.views={}; if(raw){const o=JSON.parse(raw); ALL.persons=o.persons||{}; ALL.places=o.places||{}; ALL.sources=o.sources||{}; ALL.views=o.views||{};}}catch(e){}
+  /* The archive text lives in IndexedDB (no 5 MB cap like localStorage). Older versions kept it
+     in localStorage: it is moved over the first time and the old copy removed once the new one is safe.
+     If IndexedDB is unavailable (some private modes), localStorage is still used. */
+  backend:'idb',
+  async loadLocal(){
+    const k=Share.lsKey(); ALL.persons={};ALL.places={};ALL.sources={};ALL.views={};
+    const use=o=>{ if(!o) return; ALL.persons=o.persons||{}; ALL.places=o.places||{}; ALL.sources=o.sources||{}; ALL.views=o.views||{}; };
+    let o=null;
+    if(this.backend==='idb' && typeof indexedDB!=='undefined'){
+      try{ o=await IDB.aget(k); }catch(e){ console.warn('IndexedDB unavailable, using localStorage',e); this.backend='ls'; }
+    } else this.backend='ls';
+    const legacy=()=>{try{const raw=localStorage.getItem(k)||(k==='klansagan-v1'?(localStorage.getItem('kinsaga-v1')||localStorage.getItem('slaktarkivet-v1')):null); return raw?JSON.parse(raw):null;}catch(e){return null;}};
+    try{const u=JSON.parse(localStorage.getItem('klansagan-unsaved')||'null'); if(u&&u.k===k&&u.data){ o=u.data; if(this.backend==='idb'){ await IDB.aput(k,o); } else localStorage.setItem(k,JSON.stringify(o)); localStorage.removeItem('klansagan-unsaved'); }}catch(e){}
+    if(o){ use(o); return; }
+    const old=legacy(); use(old);
+    if(old&&this.backend==='idb'){ // move it over, then free the old space
+      try{ await IDB.aput(k,old); const back=await IDB.aget(k);
+        if(back&&Object.keys(back.persons||{}).length===Object.keys(old.persons||{}).length){ for(const x of [k,'kinsaga-v1','slaktarkivet-v1']) if(x===k||k==='klansagan-v1') try{localStorage.removeItem(x);}catch(e){} }
+      }catch(e){ console.warn('Could not move the archive to IndexedDB',e); this.backend='ls'; }
+    }
+  },
+  async writeArchive(k,data){
+    if(this.backend==='idb'){ try{ await IDB.aput(k,data); try{localStorage.removeItem('klansagan-unsaved');}catch(e){} return; }catch(e){ console.warn('IndexedDB write failed, falling back',e); this.backend='ls'; } }
+    localStorage.setItem(k,JSON.stringify(data));
   },
   saveLocal(){
     if(this.demo) return;
     clearTimeout(this._lt);
-    this._lt=setTimeout(()=>this.saveNow(),250);
+    this._dirty=true; this._lt=setTimeout(()=>this.saveNow(),250);
   },
   saveNow(){
-    clearTimeout(this._lt);
-    try{localStorage.setItem(Share.lsKey(),JSON.stringify({persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views}));}catch(e){toast('Webbläsarens lagring är full – ta bort några bilder eller exportera en säkerhetskopia.',6000);}
-    Share.changed();
+    clearTimeout(this._lt); this._dirty=false;
+    const data={persons:ALL.persons,places:ALL.places,sources:ALL.sources,views:ALL.views}, k=Share.lsKey();
+    // IndexedDB copies the object when the write starts (structured clone), so later edits can't sneak in half-done
+    const p=this.writeArchive(k,data).catch(()=>toast('Webbläsarens lagring är full – ta bort några bilder eller exportera en säkerhetskopia.',6000));
+    this._saving=p; Share.changed();
+    if(!this._persistAsked&&Object.keys(ALL.persons).length&&navigator.storage&&navigator.storage.persist){this._persistAsked=true; navigator.storage.persisted().then(y=>y||navigator.storage.persist()).catch(()=>{});}
+    return p;
   },
   async write(id,fn){
     const prev=this.chains[id]||Promise.resolve();
@@ -189,11 +222,17 @@ function avImg(p,A=1){const m=avatarMedia(p); if(!m) return ''; const c=cropPct(
    referenced from the data as "kl:<id>". In a shared tree they are also stored on the
    server, each one encrypted with the tree's key, and fetched when first needed. */
 const BLOB={}, BLOB_WAIT=new Set();
+/* IndexedDB, two stores: "blobs" (photos, voice memories) and "archive" (the text of each
+   archive: the local one and every shared tree, keyed like the old localStorage keys). */
 const IDB={_db:null,
-  open(){return this._db||(this._db=new Promise((ok,bad)=>{const r=indexedDB.open('klansagan',1); r.onupgradeneeded=()=>r.result.createObjectStore('blobs'); r.onsuccess=()=>ok(r.result); r.onerror=()=>bad(r.error);}));},
-  async tx(mode,fn){const db=await this.open(); return new Promise((ok,bad)=>{const t=db.transaction('blobs',mode); const st=t.objectStore('blobs'); const out=fn(st); t.oncomplete=()=>ok(out?out.result:undefined); t.onerror=()=>bad(t.error);});},
+  open(){return this._db||(this._db=new Promise((ok,bad)=>{const r=indexedDB.open('klansagan',2);
+    r.onupgradeneeded=()=>{const db=r.result; for(const n of ['blobs','archive']) if(!db.objectStoreNames.contains(n)) db.createObjectStore(n);};
+    r.onsuccess=()=>{const db=r.result; db.onversionchange=()=>{db.close(); IDB._db=null;}; ok(db);}; r.onerror=()=>bad(r.error); r.onblocked=()=>bad(new Error('blocked'));}));},
+  async tx(mode,fn,store='blobs'){const db=await this.open(); return new Promise((ok,bad)=>{const t=db.transaction(store,mode); const st=t.objectStore(store); const out=fn(st); t.oncomplete=()=>ok(out?out.result:undefined); t.onerror=()=>bad(t.error); t.onabort=()=>bad(t.error||new Error('aborted'));});},
   get(id){return this.tx('readonly',st=>st.get(id));},
   put(id,v){return this.tx('readwrite',st=>st.put(v,id));},
+  aget(k){return this.tx('readonly',st=>st.get(k),'archive');},
+  aput(k,v){return this.tx('readwrite',st=>st.put(v,k),'archive');},
 };
 const PIXEL='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 const blobId=m=>m&&typeof m.url==='string'&&m.url.startsWith('kl:')?m.url.slice(3):null;
@@ -210,7 +249,7 @@ async function loadBlobs(){
   for(const id of ids){ try{const v=await IDB.get(id); if(v){BLOB[id]=v; got++; BLOB_WAIT.delete(id);} else missing.push(id);}catch(e){missing.push(id);} }
   if(missing.length&&Share.cur()){ try{ got+=await Share.fetchBlobs(missing); }catch(e){console.warn('Kunde inte hämta bilder',e);} }
   missing.forEach(id=>{ if(!BLOB[id]) setTimeout(()=>BLOB_WAIT.delete(id),30000); else BLOB_WAIT.delete(id); });
-  if(got){ renderAll(); if(ui.sel) select(ui.sel.type,ui.sel.id); }
+  if(got){ DATA_REV++; renderAll(); if(ui.sel) select(ui.sel.type,ui.sel.id); }
 }
 /** Make sure a media item's image is loaded, and return a usable URL. */
 async function blobUrl(m){const id=blobId(m); if(!id) return m.url; if(BLOB[id]) return BLOB[id];
@@ -549,6 +588,18 @@ function renderTree(fresh){
   const av0=activeView(); $('#tView').innerHTML=av0?`<span class="vchip">Vy: <b>${esc(av0.name)}</b> · ${HIDDEN.size} dolda <button class="btn sm ghost" onclick="setActiveView(null)">Visa alla</button></span>`:'';
   const svg=d3.select('#treeSvg'), g=svg.select('g.vp');
   const showSp=ui.showPartners!==false;
+  // Nothing in the tree changed (only the selection, or the panel): mark the selected card and move the camera, no redraw.
+  if(ui.relHL&&!ui.relHL.n) ui.relHL.n=ui.relHLn=(ui.relHLn||0)+1;
+  const sig=[F&&F.id,ui.ancGen,ui.descGen,ui.kinDeg,showSp,ui.cardSize,ui.nameMode,ui.relHL?ui.relHL.n:0,DATA_REV,Store.canEdit,themeName(),$('#treeSvg').clientWidth>700].join('|');
+  if(!fresh&&ui.treeSig===sig&&ui.treeKey!=null&&!ui.treeAnchor&&ui.treePos&&!g.select('g[data-k]').empty()){
+    const sel0=ui.sel&&ui.sel.type==='person'?ui.sel.id:null;
+    g.selectAll('g.card').classed('sel',function(){return this.getAttribute('data-k')===sel0;});
+    if(ui.treePan){const n=ui.treePos.get(ui.treePan); ui.treePan=null;
+      if(n){const el0=svg.node(), t=d3.zoomTransform(el0); svg.transition().duration(400).call(treeZoom.transform,d3.zoomIdentity.translate(el0.clientWidth/2-n.x*t.k,el0.clientHeight/2-n.y*t.k).scale(t.k));}}
+    if(ui.treeZoomTo){const id=ui.treeZoomTo; ui.treeZoomTo=null; setTimeout(()=>treeGoTo(id),0);}
+    return;
+  }
+  ui.treeSig=sig;
   setCardSize(ui.cardSize==='small'); let LY=treeLayout(F,showSp);
   if((ui.cardSize||'auto')==='auto'&&LY.nodes.length>40){setCardSize(true); LY=treeLayout(F,showSp);}
   const {nodes,links,aRoot}=LY;
@@ -562,12 +613,47 @@ function renderTree(fresh){
     if(l.type==='anc') return `M${l.s.x},${l.s.y-CH/2}V${l.my}H${l.t.x}V${l.t.y+CH/2}`;
     return `M${l.s.x},${l.s.mid?l.s.y:l.s.y+CH/2}V${l.my}H${l.t.x}V${l.t.y-CH/2}`;
   };
+  // Animation (FLIP): remember where every card is drawn right now, mid-glide included,
+  // so the new layout can start each card there and let it slide to its new place.
+  const nodeKey=n=>n.data.ghost?'g:'+n.data.ghost+':'+n.data.of:n.data.p.id;
+  const ANIM=!fresh&&!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches), DUR=650;
+  const was=new Map(), keys=new Set(nodes.map(nodeKey));
+  g.selectAll('g[data-k]').each(function(){const k=this.getAttribute('data-k'); const m=/translate\(([-\d.e]+),\s*([-\d.e]+)\)/.exec(this.getAttribute('transform')||''); if(k&&m&&!was.has(k)) was.set(k,{x:+m[1]+CW/2,y:+m[2]+CH/2});});
+  const exitEls=ANIM?g.selectAll('g[data-k]').interrupt('glide').filter(function(){return !keys.has(this.getAttribute('data-k'));}).nodes():[];
+  const t0=d3.zoomTransform(svg.node());
+  // Focus moved to someone already on screen (search, side panel): keep them where they are and let the tree rearrange around them.
+  if(ANIM&&!ui.treeAnchor&&ui.treeFocusWas&&ui.treeFocusWas!==F.id&&was.has(F.id)){const o=was.get(F.id), sx=t0.applyX(o.x), sy=t0.applyY(o.y), el0=svg.node();
+    if(sx>40&&sy>60&&sx<el0.clientWidth-40&&sy<el0.clientHeight-40){ui.treeAnchor={x:sx,y:sy,k:t0.k}; ui.treeKey=null;}}
+  ui.treeFocusWas=F.id;
+  // Shift between old and new coordinates: the focus person stays put on screen.
+  const fNew=nodes.find(n=>n.focus), fOld=fNew&&was.get(nodeKey(fNew));
+  const anchored=ANIM&&!!ui.treeAnchor&&!!fOld;
+  const dx=fOld&&anchored?fNew.x-fOld.x:0, dy=fOld&&anchored?fNew.y-fOld.y:0;
+  const moving=ANIM&&was.size>0&&(anchored||!ui.treeAnchor);
   g.selectAll('*').remove();
   // generation labels
   for(let d=1; d<=ui.ancGen; d++){ if(aRoot.descendants().some(n=>n.depth===d&&n.data.p)){ const xs=aRoot.descendants().filter(n=>n.depth===d).map(n=>n.x); g.append('text').attr('class','gen-label').attr('x',Math.min(...xs)-CW/2).attr('y',-d*(CH+56)-CH/2-8).text(['','Föräldrar','Farföräldrar & morföräldrar','Farfars- och morfarsföräldrar','Generation 4','Generation 5','Generation 6'][d]||('Generation '+d)); } }
-  g.selectAll('path.link').data(links).join('path').attr('class',l=>'link'+(l.type==='cp'?' sp'+(l.dash?' far':''):'')+(l.type==='dot'?' dot':'')+(l.fam?' fam'+l.fam:'')).attr('d',lp);
+  const linkSel=g.selectAll('path.link').data(links).join('path').attr('class',l=>'link'+(l.type==='cp'?' sp'+(l.dash?' far':''):'')+(l.type==='dot'?' dot':'')+(l.fam?' fam'+l.fam:'')).attr('d',lp);
   const sel=ui.sel&&ui.sel.type==='person'?ui.sel.id:null;
-  const cards=g.selectAll('g.node').data(nodes).join('g').attr('transform',n=>`translate(${n.x-CW/2},${n.y-CH/2})`);
+  const HL=ui.relHL&&nodes.some(n=>n.data.p&&n.data.p.id===ui.relHL.a)&&nodes.some(n=>n.data.p&&n.data.p.id===ui.relHL.b)?ui.relHL:null;
+  svg.classed('relhl',!!HL);
+  if(HL){ // links on the chain: a child on the path hangs from its parents on the path; couple lines between two lit cards
+    const lit=nodes.filter(n=>n.data.p&&HL.ids.has(n.data.p.id)), litAt=(x,y)=>lit.some(n=>Math.abs(n.y-y)<2&&(Math.abs(n.x+CW/2-x)<2||Math.abs(n.x-CW/2-x)<2));
+    const srcs=[];
+    linkSel.classed('hl',l=>{
+      if(l.type==='desc'||l.type==='anc'){const c=l.type==='desc'?l.t:l.s, q=l.type==='desc'?l.s:l.t, cid=c.data&&c.data.p&&c.data.p.id;
+        if(!cid||!HL.ids.has(cid)||HL.commons.has(cid)&&l.type==='desc') return false;
+        if(l.type==='anc'){const pid=q.data&&q.data.p&&q.data.p.id; return !!pid&&HL.ids.has(pid);}
+        srcs.push(q); return true;}
+      if(l.type==='cp') return litAt(l.x1,l.y)&&litAt(l.x2,l.y);
+      return false;});
+    linkSel.filter(l=>l.type==='dot').classed('hl',l=>srcs.some(q=>Math.abs(q.x-l.x)<2&&Math.abs(q.y-l.y)<2));
+  }
+  {let bn=$('#relBanner'); if(HL){ if(!bn){bn=document.createElement('div'); bn.id='relBanner'; $('#treeWrap').appendChild(bn);}
+      bn.innerHTML=`<span>🔗 ${esc(HL.label)}</span><button class="btn sm" id="relBack">Tillbaka</button><button class="iconbtn" id="relOff" title="Sluta markera" aria-label="Sluta markera">×</button>`;
+      $('#relOff').onclick=()=>{ui.relHL=null; renderTree();}; $('#relBack').onclick=()=>{ui.relHL=null; location.hash='slaktskap';};}
+    else if(bn) bn.remove(); if(!HL) ui.relHL=null;}
+  const cards=g.selectAll('g.node').data(nodes).join('g').attr('data-k',nodeKey).attr('transform',n=>`translate(${n.x-CW/2},${n.y-CH/2})`);
   cards.each(function(n){
     const el=d3.select(this), d=n.data;
     if(d.ghost){
@@ -578,7 +664,7 @@ function renderTree(fresh){
       return;
     }
     const p=d.p;
-    el.attr('class','card'+(n.focus?' focus':'')+(sel===p.id?' sel':''));
+    el.attr('class','card'+(n.focus?' focus':'')+(sel===p.id?' sel':'')+(HL&&HL.ids.has(p.id)?' hl'+(p.id===HL.a||p.id===HL.b?' hl-end':''):''));
     el.append('rect').attr('class','bg').attr('width',CW).attr('height',CH).attr('rx',9);
     el.append('rect').attr('width',5).attr('height',CH-16).attr('x',0).attr('y',8).attr('rx',2).style('fill',sexColor(p));
     const av=avatarUrl(p), tx=PX+PW+(SMALL?8:12), maxc=MAXC, LH=SMALL?13:16, Y0=SMALL?20:28;
@@ -603,6 +689,21 @@ function renderTree(fresh){
       eg.append('title').text('Dölj i vyn…'); eg.on('click',ev=>{ev.stopPropagation(); hideModal(p);});}
     el.on('click',()=>{ if(n.focus){select('person',p.id);} else if(ui.treeLock){ui.treePan=p.id; select('person',p.id);} else { const t=d3.zoomTransform($('#treeSvg')); ui.treeAnchor={x:t.applyX(n.x),y:t.applyY(n.y),k:t.k}; setFocus(p.id); ui.treeKey=null; select('person',p.id);} });
   });
+  if(moving){
+    const ease=d3.easeCubicInOut, labels=g.selectAll('text.gen-label'); let changed=exitEls.length>0;
+    cards.each(function(n){const o=was.get(nodeKey(n)), el=d3.select(this);
+      if(o){const sx=o.x+dx, sy=o.y+dy; if(Math.abs(sx-n.x)+Math.abs(sy-n.y)<1) return; changed=true;
+        el.attr('transform',`translate(${sx-CW/2},${sy-CH/2})`).transition('glide').duration(DUR).ease(ease).attr('transform',`translate(${n.x-CW/2},${n.y-CH/2})`);}
+      else {changed=true; el.style('opacity',0).transition('glide').delay(DUR*.55).duration(DUR*.6).style('opacity',1).on('end interrupt',function(){this.style.opacity='';});}});
+    if(changed){ linkSel.style('opacity',0).transition('glide').delay(DUR*.7).duration(DUR*.5).style('opacity',null);
+    labels.style('opacity',0).transition('glide').delay(DUR*.7).duration(DUR*.5).style('opacity',null);
+    // cards that leave the view fade out where they were
+    const ex=g.insert('g',':first-child').attr('class','exiting').attr('pointer-events','none');
+    for(const el of exitEls){const m=/translate\(([-\d.e]+),\s*([-\d.e]+)\)/.exec(el.getAttribute('transform')||''); if(!m) continue;
+      el.setAttribute('transform',`translate(${+m[1]+dx},${+m[2]+dy})`); ex.node().appendChild(el);}
+    ex.transition('glide').duration(DUR*.45).style('opacity',0).remove();
+    }
+  }
   // locked tree: only the camera moves, to the person that was clicked
   ui.treeShown=new Set(nodes.filter(n=>n.data&&n.data.p).map(n=>n.data.p.id));
   ui.treePos=new Map(nodes.filter(n=>n.data&&n.data.p).map(n=>[n.data.p.id,{x:n.x,y:n.y}]));
@@ -613,16 +714,24 @@ function renderTree(fresh){
   const key=[F.id,ui.ancGen,ui.descGen,ui.kinDeg,showSp,SMALL].join('|');
   if(ui.treeKey!==key&&ui.treeAnchor){
     ui.treeKey=key; const a=ui.treeAnchor; ui.treeAnchor=null;
-    svg.transition().duration(350).call(treeZoom.transform,d3.zoomIdentity.translate(a.x,a.y).scale(a.k));
+    const at=d3.zoomIdentity.translate(a.x-(fNew?fNew.x*a.k:0),a.y-(fNew?fNew.y*a.k:0)).scale(a.k);
+    if(anchored){ svg.interrupt().call(treeZoom.transform,at);
+      // after the glide: if the person ended up near an edge, ease them towards the middle
+      const el0=svg.node(), W=el0.clientWidth, H=el0.clientHeight, fx=at.applyX(fNew.x), fy=at.applyY(fNew.y);
+      if(fx<W*.28||fx>W*.72||fy<H*.25||fy>H*.75){const tx=Math.max(W*.3,Math.min(W*.7,fx)), ty=Math.max(H*.3,Math.min(H*.7,fy));
+        svg.transition().delay(DUR*.85).duration(550).ease(d3.easeCubicInOut).call(treeZoom.transform,d3.zoomIdentity.translate(at.x+(tx-fx),at.y+(ty-fy)).scale(at.k));}}
+    else svg.transition().duration(350).call(treeZoom.transform,at);
   }
   if(ui.treeKey!==key){
     ui.treeKey=key;
     const W=$('#treeSvg').clientWidth,H=$('#treeSvg').clientHeight;
-    const xs=nodes.map(n=>n.x),ys=nodes.map(n=>n.y);
+    const fitN=HL?nodes.filter(n=>n.data.p&&HL.ids.has(n.data.p.id)):nodes;
+    const xs=fitN.map(n=>n.x),ys=fitN.map(n=>n.y);
     const x0=Math.min(...xs)-CW/2-30,x1=Math.max(...xs)+CW/2+30,y0=Math.min(...ys)-CH/2-40,y1=Math.max(...ys)+CH/2+30;
     let k=Math.min(1.05,Math.min(W/(x1-x0),(H-60)/(y1-y0)));
     let cx=(x0+x1)/2, cy=(y0+y1)/2;
-    if(k<(ui.simple?.85:.6)){k=ui.simple?.85:.6; cx=Math.max(x0+W/(2*k),Math.min(x1-W/(2*k),CW)); cy=Math.max(y0+(H-60)/(2*k),Math.min(y1-(H-60)/(2*k),0));}
+    if(HL) k=Math.max(k,W<700?.16:.3);
+    else if(k<(ui.simple?.85:.6)){k=ui.simple?.85:.6; cx=Math.max(x0+W/(2*k),Math.min(x1-W/(2*k),CW)); cy=Math.max(y0+(H-60)/(2*k),Math.min(y1-(H-60)/(2*k),0));}
     const t=d3.zoomIdentity.translate(W/2-k*cx,(H+50)/2-k*cy).scale(k);
     svg.transition().duration(fresh?0:450).call(treeZoom.transform,t);
   }
@@ -630,9 +739,14 @@ function renderTree(fresh){
 }
 
 /* ============ PERSONS ============ */
-function renderPersons(){
+function renderPersons(fresh){
   const v=$('#view'); const all=Object.values(S.persons);
-  if(!all.length){v.innerHTML=emptyState();return;}
+  if(!all.length){v.innerHTML=emptyState();ui.plSig=null;return;}
+  // Only the selection changed: move the highlight instead of rebuilding a list that can have thousands of rows.
+  const sig=[DATA_REV,ui.plQuery,ui.plFilter,ui.plSort,ui.focus,ui.nameMode,Store.canEdit].join('|');
+  if(!fresh&&ui.plSig===sig&&v.querySelector('table.m-persons')){const sel=ui.sel&&ui.sel.type==='person'?ui.sel.id:null;
+    v.querySelectorAll('tr.sel').forEach(r=>r.classList.remove('sel')); if(sel){const r=v.querySelector(`tr[data-id="${CSS.escape(sel)}"]`); if(r) r.classList.add('sel');} return;}
+  ui.plSig=sig;
   const flt={
     alla:()=>true,
     kalla:p=>!(p.citations||[]).length,
@@ -2048,6 +2162,18 @@ function relation(aId,bId){
     return {text:t,r:r2,kind:'inlaw',via:q.id,viaSide:'a'};}}
   return {text:null};
 }
+/** Open the tree around the shared ancestor and light up the chain between a and b. */
+function showRelInTree(aId,bId,res){
+  const ids=new Set([aId,bId]); let top=aId, need=0, label=res.text;
+  if(res.r){ const r=res.r; r.pa.forEach(x=>ids.add(x)); r.pb.forEach(x=>ids.add(x)); (r.commons||[]).forEach(x=>ids.add(x));
+    top=(r.commons&&r.commons[0])||r.pa[r.pa.length-1]; need=Math.max(r.a,r.b);
+    if(res.via){ ids.add(res.via); if(res.viaSide==='b'&&r.b===0) need=Math.max(need,0); } }
+  else if(res.kind==='partner'){ top=aId; }
+  const commons=res.r&&res.r.commons?res.r.commons:[top];
+  ui.relHL={ids,a:aId,b:bId,commons:new Set(commons),label:`${fullName(P(bId))} är ${genitive(shortName(P(aId)))} ${label}`};
+  ui.treeLock=false; if(ui.descGen<need) ui.descGen=need; if(ui.showPartners===false&&(res.via||res.kind==='partner'||commons.length>1)) ui.showPartners=true;
+  setFocus(top); ui.treeKey=null; ui.sel=null; location.hash='trad';
+}
 function renderRel(){
   const v=$('#view'); const all=Object.values(S.persons);
   if(all.length<2){v.innerHTML=emptyState();return;}
@@ -2071,11 +2197,12 @@ function renderRel(){
     <div class="rel-answer">${res.text?`<div class="muted small" style="margin-bottom:6px">${res.kind==='blood'&&res.r?`${res.r.a+res.r.b} generationssteg via ${listJoin(res.r.commons.map(id=>esc(fullName(P(id)))))}`:res.kind==='inlaw'?'Släkt genom giftermål':res.kind==='partner'?'Partner':''}</div>
       <div class="big"><b>${bn}</b> är ${genitive(an)} <b>${esc(res.text)}</b>.</div>
       ${res.kind==='blood'&&res.r&&res.r.a!==res.r.b&&res.r.a>0&&res.r.b>0?`<div class="muted" style="margin-top:8px">Omvänt: ${an} är ${esc(genitive(shortName(B)))} ${esc(bloodTerm({...res.r,a:res.r.b,b:res.r.a,pa:res.r.pb,pb:res.r.pa},B.id,A.id))}.</div>`:''}
-      ${pathHTML}`
+      ${pathHTML}<div style="margin-top:16px;text-align:center"><button class="btn primary" id="relTree">🌳 Visa vägen i trädet</button></div>`
     :`<div class="big">Ingen känd släktskap</div><p class="muted" style="margin:8px 0 0">Hittade ingen gemensam ana eller koppling via giftermål mellan ${an} och ${bn} i arkivet.</p>`}</div></div>`;
   const pick=(inp,key)=>{inp.onchange=()=>{const p=personByLabel(inp.value); if(p){ui[key]=p.id; renderRel();} else toast('Välj en person i listan');};};
   pick($('#relA'),'relA'); pick($('#relB'),'relB');
   $('#relSwap').onclick=()=>{[ui.relA,ui.relB]=[ui.relB,ui.relA]; renderRel();};
+  {const rt=$('#relTree'); if(rt) rt.onclick=()=>showRelInTree(A.id,B.id,res);}
   bindChips(v,openCard);
 }
 
@@ -2518,7 +2645,7 @@ const Share={
       const data={persons:v.data.persons||{},places:v.data.places||{},sources:v.data.sources||{},views:v.data.views||{}};
       this.st.trees[id]={key,version:v.version,base:KinCore.hashArchive(data),joined:new Date().toISOString(),name:'',uploaded:Object.fromEntries([...blobRefs(data)].map(b=>[b,1]))};
       this.st.active=id; this.save();
-      localStorage.setItem('klansagan-tree-'+id,JSON.stringify(data));
+      await Store.writeArchive('klansagan-tree-'+id,data);
       setTimeout(()=>{const n=Object.keys(data.persons).length; toast(`Du är med i ett delat släktträd – ${n} personer. Dina ändringar syns för de andra när du publicerar.`,7000);},600);
     }catch(e){ const msg=e&&e.name==='OperationError'?'länken verkar vara fel eller ofullständig. Kopiera hela länken igen.':(e.message||e); setTimeout(()=>toast('Kunde inte öppna det delade trädet: '+msg,8000),600); }
   },
@@ -2574,7 +2701,7 @@ const Share={
     Object.assign(ALL,{persons:v.data.persons||{},places:v.data.places||{},sources:v.data.sources||{},views:v.data.views||{}});
     applyView(); Store.saveNow(); ui.treeKey=null; ui.sel=null; renderAll(true); this.updateStatus();
     toast(`Trädet ser nu ut som i version ${ver}. Tryck Publicera för att alla ska få det.`,7000,{label:'Publicera',fn:()=>this.publish()});},
-  switchTo(id){Store.saveNow(); this.st.active=id||null; this.newer=false; this.save(); Store.loadLocal(); applyView(); ui.focus=null; ui.sel=null; ui.treeKey=null; this.updateStatus(); renderAll(true); if(id) this.check(true);},
+  async switchTo(id){await Store.saveNow(); this.st.active=id||null; this.newer=false; this.save(); await Store.loadLocal(); applyView(); ui.focus=null; ui.sel=null; ui.treeKey=null; this.updateStatus(); renderAll(true); if(id) this.check(true);},
   startPolling(){ if(this._poll) return; this._poll=setInterval(()=>this.check(true),60000); document.addEventListener('visibilitychange',()=>{if(!document.hidden) this.check(true);}); if(this.cur()) setTimeout(()=>this.check(true),1500); },
 };
 {const m=location.hash.match(/^#dela-([0-9a-f-]{36})\.([A-Za-z0-9_-]{40,})$/); if(m){Share.pendingJoin={id:m[1],key:m[2]}; history.replaceState(null,'',location.pathname+location.search+'#start');}}
