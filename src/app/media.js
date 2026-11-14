@@ -1,11 +1,12 @@
 /* Släktsagan · media.js — Photos and documents: upload, drag and drop, thumbnails, face framing, lightbox. */
-import { P, avatarMedia, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=48';
-import { confirmBox, modal } from './modal.js?v=48';
-import { E, audioDuration, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=48';
-import { renderAll, select } from './router.js?v=48';
-import { ALL, S, ui } from './state.js?v=48';
-import { Hist, Store } from './store.js?v=48';
-import { $, clone, esc, genitive, toast } from './util.js?v=48';
+import { P, avatarMedia, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=50';
+import { confirmBox, modal } from './modal.js?v=50';
+import { E, audioDuration, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=50';
+import { bindLogs } from './research.js?v=50';
+import { renderAll, select } from './router.js?v=50';
+import { ALL, S, ui } from './state.js?v=50';
+import { Hist, Store } from './store.js?v=50';
+import { $, clone, esc, genitive, toast } from './util.js?v=50';
 
 /* ============ Photos straight onto a person ============
    Click the empty photo on a card (on a phone: take a picture or pick one), drop image
@@ -105,7 +106,7 @@ function bindMedia(){
   const av=pn.querySelector('#uplAv'); if(av) av.onchange=()=>uploadMedia(av.files,{profile:true});
   pn.querySelectorAll('[data-media]').forEach(el=>el.onclick=()=>openLightbox(o,+el.dataset.media));
   bindVoices(pn,o);
-  if(ui.sel&&ui.sel.type==='person') bindComments(pn,o);
+  if(ui.sel&&ui.sel.type==='person') { bindComments(pn,o); bindLogs(pn,o); }
   {const ua=pn.querySelector('#uplAudio'); if(ua) ua.onchange=async()=>{const f=ua.files[0]; if(!f) return; try{const d=await audioDuration(f); await saveVoice(o,f,{duration:d,caption:f.name.replace(/\.[^.]+$/,'')}); toast('Ljudfilen är sparad som röstminne.');}catch(e){toast('Kunde inte spara: '+(e.message||e),6000);}};}
 }
 function currentSelObj(){if(!ui.sel) return null; return ui.sel.type==='person'?P(ui.sel.id):ui.sel.type==='place'?S.places[ui.sel.id]:S.sources[ui.sel.id];}
@@ -159,6 +160,7 @@ function openLightbox(o,i){
 async function deletePerson(id){
   {const d=P(id); if(d) Hist.label('Borttagning av '+fullName(d),1500);}
   for(const c of Object.values(ALL.comments)) if(c.personId===id) Store.del('comment',c.id,{silent:true});
+  for(const l of Object.values(ALL.logs||{})) if(l.personId===id) Store.del('log',l.id,{silent:true});
   const others=Object.values(ALL.persons).filter(x=>x.id!==id&&(x.fatherId===id||x.motherId===id||(x.spouseIds||[]).includes(id)||(x.events||[]).some(e=>e.withId===id)));
   for(const o of others){const q=clone(o); if(q.fatherId===id) q.fatherId=''; if(q.motherId===id) q.motherId=''; q.spouseIds=(q.spouseIds||[]).filter(x=>x!==id); (q.events||[]).forEach(e=>{if(e.withId===id) e.withId='';}); Store.put(q,{silent:true});}
   if(ui.focus===id) ui.focus=null;

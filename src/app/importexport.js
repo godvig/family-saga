@@ -1,13 +1,13 @@
 /* Släktsagan · importexport.js — Excel/CSV and GEDCOM import, export (GEDCOM, CSV, JSON backup). */
-import { Backup } from './backup.js?v=48';
-import { exitDemo } from './demo.js?v=48';
-import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=48';
-import { confirmBox, modal } from './modal.js?v=48';
-import { E } from './panel.js?v=48';
-import { renderAll, setFocus } from './router.js?v=48';
-import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=48';
-import { Hist, Store } from './store.js?v=48';
-import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf } from './util.js?v=48';
+import { Backup } from './backup.js?v=50';
+import { exitDemo } from './demo.js?v=50';
+import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=50';
+import { confirmBox, modal } from './modal.js?v=50';
+import { E } from './panel.js?v=50';
+import { renderAll, setFocus } from './router.js?v=50';
+import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=50';
+import { Hist, Store } from './store.js?v=50';
+import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf } from './util.js?v=50';
 
 /* ============ IMPORT / EXPORT ============ */
 const FIELDS=[
@@ -235,7 +235,7 @@ async function doExport0(kind){
   const stamp=new Date().toISOString().slice(0,10);
   if(kind==='json'){ const inl=async col=>{const o=clone(ALL[col]); for(const d of Object.values(o)) {const map={}; for(const m of d.media||[]){ if(blobId(m)){const old=m.url; m.url=await blobUrl(m); map[old]=m.url;} delete m.thumb; } for(const m of d.media||[]) if(m.forImg&&map[m.forImg]) m.forImg=map[m.forImg];} return o;};
     const [persons,places,sources]=await Promise.all([inl('persons'),inl('places'),inl('sources')]);
-    saveFile(`slaktsagan-${stamp}.json`,JSON.stringify({app:'Släktsagan',version:1,exported:new Date().toISOString(),persons,places,sources,views:ALL.views,comments:ALL.comments},null,1)); Backup.mark(); }
+    saveFile(`slaktsagan-${stamp}.json`,JSON.stringify({app:'Släktsagan',version:1,exported:new Date().toISOString(),persons,places,sources,views:ALL.views,comments:ALL.comments,logs:ALL.logs},null,1)); Backup.mark(); }
   if(kind==='csv'){
     const ids={}; Object.values(S.persons).forEach((p,i)=>ids[p.id]=i+1);
     const c=v=>{v=String(v??''); return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};

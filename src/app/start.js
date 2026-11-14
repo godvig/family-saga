@@ -1,17 +1,18 @@
 /* Släktsagan · start.js — The start page, the presentation page and separate trees. */
-import { demoActive } from './demo.js?v=48';
-import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=48';
-import { findDups, mergePersons } from './dups.js?v=48';
-import { confirmBox, modal } from './modal.js?v=48';
-import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=48';
-import { PWA } from './pwa.js?v=48';
-import { Share } from './share.js?v=48';
-import { renderAll, setFocus } from './router.js?v=48';
-import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=48';
-import { Store } from './store.js?v=48';
-import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=48';
-import { $, clone, esc, toast, yearOf } from './util.js?v=48';
-import { fillNames } from './views.js?v=48';
+import { demoActive } from './demo.js?v=50';
+import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=50';
+import { findDups, mergePersons } from './dups.js?v=50';
+import { confirmBox, modal } from './modal.js?v=50';
+import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=50';
+import { PWA } from './pwa.js?v=50';
+import { bindOpenSearches, openSearchesHTML } from './research.js?v=50';
+import { Share } from './share.js?v=50';
+import { renderAll, setFocus } from './router.js?v=50';
+import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=50';
+import { Store } from './store.js?v=50';
+import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=50';
+import { $, clone, esc, toast, yearOf } from './util.js?v=50';
+import { fillNames } from './views.js?v=50';
 
 /* ============ START ============ */
 function heroArt(){
@@ -141,10 +142,11 @@ function renderStart(){
     ${(()=>{const qs=openQuestions().sort((a,b)=>(b.at||'').localeCompare(a.at||'')); if(!qs.length) return '';
       return `<h2 class="sec-t">Öppna frågor <span class="muted" style="font-weight:400">· ${qs.length}</span></h2><div class="qlist">${qs.slice(0,6).map(c=>{const p=P(c.personId); const nr=commentsFor(c.personId).filter(r=>r.replyTo===c.id).length;
         return `<a class="qrow" href="#" data-q="${c.personId}"><span class="cm-av" style="background:${nameColor(c.by)}">${esc((c.by||'?').charAt(0).toUpperCase())}</span><span class="qbody"><b>${esc(fullName(p))}</b><span>${esc(c.text.length>110?c.text.slice(0,108)+'…':c.text)}</span><small class="muted">${esc(c.by||'Någon')} · ${esc(ago(c.at))}${nr?` · ${nr} svar`:''}</small></span></a>`;}).join('')}${qs.length>6?`<div class="muted small" style="padding:6px 2px">… och ${qs.length-6} till</div>`:''}</div>`;})()}
+    ${openSearchesHTML()}
     <h2 class="sec-t">Senast ändrade</h2>
     <div class="recent">${recent.map(p=>chipHTML(p,p.updatedBy&&Store.user?`av <span data-uid="${esc(p.updatedBy)}">…</span>`:'')).join('')}</div>
     ${activeView()?`<p class="small muted" style="margin-top:18px">Du tittar på vyn <b>${esc(activeView().name)}</b> – ${HIDDEN.size} personer är dolda. Byt vy uppe till höger.</p>`:''}</div>`;
-  bindChips(v,openCard); fillNames(v); bindTrees(v);
+  bindChips(v,openCard); fillNames(v); bindTrees(v); bindOpenSearches(v);
   {const b=v.querySelector('#newsSeen'); if(b) b.onclick=()=>{Share.seen(); renderAll(true);};}
   v.querySelectorAll('[data-otd]').forEach(a=>a.onclick=e=>{e.preventDefault(); openCard(a.dataset.otd);});
   v.querySelectorAll('[data-q]').forEach(a=>a.onclick=e=>{e.preventDefault(); setFocus(a.dataset.q); ui.sel={type:'person',id:a.dataset.q}; location.hash='trad'; setTimeout(()=>{const el=document.querySelector('#panel .comments'); if(el) el.scrollIntoView({block:'start',behavior:'smooth'});},350);});

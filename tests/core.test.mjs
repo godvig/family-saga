@@ -371,7 +371,7 @@ describe('read-only links: living people', () => {
     expect(pub.comments).toBeUndefined();
     expect(priv.persons.kid).toEqual(persons.kid);
     expect(priv.comments.cm.text).toBe('Moster vet');
-    expect(core.joinPrivate(pub, priv)).toEqual({ ...data, views: {} });
+    expect(core.joinPrivate(pub, priv)).toEqual({ ...data, views: {}, logs: {} });
   });
 
   it('tags keys so photos under different keys never collide', async () => {
@@ -401,5 +401,28 @@ describe("what's new since your last visit", () => {
     expect(n.since).toBe('2026-11-14');
     expect(core.addNews(n, { added: [], changed: {}, removed: [], comments: [] }, ['X'], 'y')).toBe(n);
     expect(core.pruneNews(n, { persons: { a: {} }, comments: {} }).added).toEqual({});
+  });
+});
+
+describe('reviewing who counts as living', () => {
+  const persons = {
+    ana: { id: 'ana', given: 'Ana' },                          // no dates, grandchild born 1930
+    son: { id: 'son', given: 'Son', fatherId: 'ana' },          // no dates
+    gk: { id: 'gk', given: 'Barnbarn', fatherId: 'son', birthDate: '1930' },
+    wife: { id: 'wife', given: 'Hustru', spouseIds: ['old'] },  // husband born 1880
+    old: { id: 'old', given: 'Make', birthDate: '1880', spouseIds: ['wife'] },
+    kid: { id: 'kid', given: 'Ung', birthDate: '1990' },
+    lone: { id: 'lone', given: 'Ensam' },
+  };
+  it('estimates from partners too', () => {
+    expect(core.livingInfo(persons.wife, persons, 2026)).toEqual({ living: false, year: 1880, estimated: true });
+    expect(core.livingInfo(persons.kid, persons, 2026)).toEqual({ living: true, year: 1990, estimated: false });
+    expect(core.livingInfo(persons.lone, persons, 2026)).toEqual({ living: true, year: null, estimated: false });
+  });
+  it('suggests undated people with old descendants', () => {
+    expect(core.likelyDeceased(persons.ana, persons, 2026)).toBe(true);
+    expect(core.isLiving(persons.son, persons, 2026)).toBe(false); // already estimated from his child
+    expect(core.likelyDeceased(persons.lone, persons, 2026)).toBe(false);
+    expect(core.likelyDeceased(persons.kid, persons, 2026)).toBe(false);
   });
 });

@@ -1,16 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=48';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=48';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=48';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=48';
-import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=48';
-import { Share, askName } from './share.js?v=48';
-import { linkModal } from './start.js?v=48';
-import { ALL, S, ui } from './state.js?v=48';
-import { Hist, Store } from './store.js?v=48';
-import { openCard } from './theme.js?v=48';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=48';
-import { fillNames, hideModal } from './views.js?v=48';
+import { P, PIXEL, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=50';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=50';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=50';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=50';
+import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=50';
+import { Share, askName } from './share.js?v=50';
+import { logSection } from './research.js?v=50';
+import { linkModal } from './start.js?v=50';
+import { ALL, S, ui } from './state.js?v=50';
+import { Hist, Store } from './store.js?v=50';
+import { openCard } from './theme.js?v=50';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=50';
+import { fillNames, hideModal } from './views.js?v=50';
 
 /* ============ PANEL ============ */
 function renderPanel(){
@@ -53,6 +54,7 @@ function personPanel(p){
       ${ed?`<button class="btn sm" data-act="edit">Redigera</button><button class="btn sm ghost danger" data-act="delp">Ta bort</button>`:''}
     </div></div>
   ${p.updatedBy&&Store.user?`<div class="sec small muted" style="padding:8px 20px">Senast ändrad ${esc(fmtDate((p.updatedAt||'').slice(0,10)))} av <span data-uid="${esc(p.updatedBy)}">…</span></div>`:''}
+  ${ed&&Share.cur()&&Share.cur().v===2&&!p.living&&KinCore.isLiving(p,ALL.persons,new Date().getFullYear())?'<div class="sec small muted" style="padding:10px 20px">🔒 Räknas som levande – i läslänken visas bara namn och födelseår. Har personen dött? Fyll i dödsdatum eller kryssa i <i>Avliden, datum okänt</i> under Redigera.</div>':''}
   ${p.living&&Share.readOnly()?'<div class="sec small muted" style="padding:10px 20px">🔒 Personen lever. Med en läslänk visas bara namn och födelseår – datum, orter, bilder och anteckningar ser bara de som kan redigera.</div>':''}
   <div class="sec"><h4>Fakta</h4><dl class="facts">
     <dt>Född</dt><dd>${esc(p.birthDate||'–')}${p.birthPlace?` <a href="#" data-place="${p.birthPlace}">${esc(placeName(p.birthPlace))}</a>`:''}</dd>
@@ -77,6 +79,7 @@ function personPanel(p){
     ${cites.length?cites.map(c=>{const s=S.sources[c.sourceId]; return `<div class="cite"><div style="display:flex;gap:6px"><b data-src="${c.sourceId}" style="flex:1">${esc(s?s.title:'(borttagen källa)')}</b>${ed?`<button class="iconbtn" data-delcite="${c.id}" title="Ta bort">×</button>`:''}</div>
       <div class="small muted">${esc(aboutLabel(c.about))}${c.detail?' · '+esc(c.detail):''}${s&&s.ref&&!(c.detail||'').includes(s.ref)?' · '+esc(s.ref):''}</div>${citeLinks(c)}</div>`}).join(''):`<div class="muted small">Inga källor ännu. Koppla husförhörslängder, dopböcker m.m. så vet du var uppgifterna kommer ifrån.</div>`}
   </div>`:''}
+  ${logSection(p)}
   ${commentSection(p)}
   ${voiceSection(p)}
   ${mediaSection(p)}

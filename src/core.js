@@ -307,7 +307,7 @@
   }
 
   /** The archive's collections. Comments are documents of their own so concurrent ones merge cleanly. */
-  const COLS = ['persons', 'places', 'sources', 'views', 'comments'];
+  const COLS = ['persons', 'places', 'sources', 'views', 'comments', 'logs'];
 
   /**
    * Hashes of every document in an archive: { persons: { id: hash }, … }.
@@ -435,18 +435,51 @@
    * 120 years ago is not alive.
    * @param {any} p @param {Record<string,any>} persons @param {number} nowYear
    */
-  function isLiving(p, persons, nowYear) {
-    if (!p || p.deceased || p.deathDate || p.deathPlace) return false;
-    if ((p.events || []).some((/** @type {any} */ e) => e.type === 'Död' || e.type === 'Begravning')) return false;
-    let by = yearOf(p.birthDate);
-    if (!by) {
-      const all = Object.values(persons || {});
-      const ests = /** @type {number[]} */ ([]);
-      for (const k of ['fatherId', 'motherId']) { const q = persons[p[k]]; const y = q && yearOf(q.birthDate); if (y) ests.push(y + 20); }
-      for (const c of all) if (c.fatherId === p.id || c.motherId === p.id) { const y = yearOf(c.birthDate); if (y) ests.push(y - 15); }
-      if (ests.length) by = Math.min(...ests);
+  /** Children by parent id, built once for a whole archive. @param {Record<string,any>} persons */
+  function kidsIndex(persons) {
+    /** @type {Map<string, any[]>} */ const m = new Map();
+    for (const c of Object.values(persons || {})) for (const k of [c.fatherId, c.motherId]) if (k) { const a = m.get(k) || []; if (!a.includes(c)) a.push(c); m.set(k, a); }
+    return m;
+  }
+
+  /**
+   * Is this person probably alive, and what is that based on? Errs on the side of "alive":
+   * no death date, no death place, not marked deceased, and either born less than 105 years
+   * ago or with no birth year to go on. Without a birth year one is estimated from parents
+   * (+20), partners (±0) and children (−15).
+   * @param {any} p @param {Record<string,any>} persons @param {number} nowYear @param {Map<string,any[]>} [kids]
+   * @returns {{living:boolean, year:number|null, estimated:boolean}}
+   */
+  function livingInfo(p, persons, nowYear, kids) {
+    if (!p || p.deceased || p.deathDate || p.deathPlace || (p.events || []).some((/** @type {any} */ e) => e.type === 'Död' || e.type === 'Begravning'))
+      return { living: false, year: p ? yearOf(p.birthDate) : null, estimated: false };
+    const own = yearOf(p.birthDate);
+    if (own) return { living: nowYear - own < 105, year: own, estimated: false };
+    const ests = /** @type {number[]} */ ([]);
+    for (const k of ['fatherId', 'motherId']) { const q = persons[p[k]]; const y = q && yearOf(q.birthDate); if (y) ests.push(y + 20); }
+    for (const id of p.spouseIds || []) { const q = persons[id]; const y = q && yearOf(q.birthDate); if (y) ests.push(y); }
+    for (const c of (kids || kidsIndex(persons)).get(p.id) || []) { const y = yearOf(c.birthDate); if (y) ests.push(y - 15); }
+    const by = ests.length ? Math.min(...ests) : null;
+    return { living: !by || nowYear - by < 105, year: by, estimated: !!by };
+  }
+  /** @param {any} p @param {Record<string,any>} persons @param {number} nowYear @param {Map<string,any[]>} [kids] */
+  function isLiving(p, persons, nowYear, kids) { return livingInfo(p, persons, nowYear, kids).living; }
+
+  /**
+   * Someone counted as living who almost certainly isn't: no birth year of their own, and a
+   * child, grandchild or later descendant born more than 80 years ago.
+   * @param {any} p @param {Record<string,any>} persons @param {number} nowYear @param {Map<string,any[]>} [kids]
+   */
+  function likelyDeceased(p, persons, nowYear, kids) {
+    const k = kids || kidsIndex(persons);
+    if (yearOf(p.birthDate) || !livingInfo(p, persons, nowYear, k).living) return false;
+    const seen = new Set([p.id]); let gen = [p.id];
+    for (let d = 0; d < 6 && gen.length; d++) {
+      const next = [];
+      for (const id of gen) for (const c of k.get(id) || []) { if (seen.has(c.id)) continue; seen.add(c.id); const y = yearOf(c.birthDate); if (y && nowYear - y > 80) return true; next.push(c.id); }
+      gen = next;
     }
-    return !by || nowYear - by < 105;
+    return false;
   }
 
   /** The few fields a reader may see about a living person: name, birth year, family links. */
@@ -470,10 +503,11 @@
   function splitForReaders(data, nowYear) {
     const persons = data.persons || {};
     /** @type {any} */ const pub = { persons: {}, places: {}, sources: {}, views: { ...(data.views || {}) } };
-    /** @type {any} */ const priv = { persons: {}, places: {}, sources: {}, comments: { ...(data.comments || {}) } };
+    /** @type {any} */ const priv = { persons: {}, places: {}, sources: {}, comments: { ...(data.comments || {}) }, logs: { ...(data.logs || {}) } };
     const usedPl = new Set(), usedSrc = new Set();
+    const kids = kidsIndex(persons);
     for (const p of Object.values(persons)) {
-      if (isLiving(p, persons, nowYear)) { priv.persons[p.id] = p; pub.persons[p.id] = redactLiving(p); continue; }
+      if (isLiving(p, persons, nowYear, kids)) { priv.persons[p.id] = p; pub.persons[p.id] = redactLiving(p); continue; }
       pub.persons[p.id] = p;
       for (const id of [p.birthPlace, p.deathPlace, ...(p.events || []).map((/** @type {any} */ e) => e.placeId)]) if (id) usedPl.add(id);
       for (const c of p.citations || []) if (c.sourceId) usedSrc.add(c.sourceId);
@@ -903,7 +937,7 @@
     };
   }
 
-  const api = { onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret, sha256hex, keyTag, isLiving, redactLiving, splitForReaders, joinPrivate, diffNews, addNews, pruneNews };
+  const api = { onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret, sha256hex, keyTag, kidsIndex, isLiving, livingInfo, likelyDeceased, redactLiving, splitForReaders, joinPrivate, diffNews, addNews, pruneNews };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   // @ts-ignore — browser global
   root.KinCore = api;

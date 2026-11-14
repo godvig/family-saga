@@ -102,3 +102,27 @@ test('an old single-key tree gets read-only links, and the old link stops workin
   await expect.poll(() => B.evaluate(() => app.Share.readOnly()), { timeout: 15000 }).toBe(true);
   await ctxA.close(); await ctxB.close();
 });
+
+test('editors can review who counts as living and mark the old ones as deceased', async ({ page }) => {
+  const server = fakeServer(); await wire(page, server);
+  await importExample(page);
+  await page.evaluate(async () => {
+    await app.Store.put({ kind: 'person', id: 'p_ana', given: 'Odaterad', surname: 'Ana', sex: 'M' });
+    await app.Store.put({ kind: 'person', id: 'p_mid', given: 'Mellan', surname: 'Ana', sex: 'M', fatherId: 'p_ana' });
+    await app.Store.put({ kind: 'person', id: 'p_gk', given: 'Barnbarn', surname: 'Ana', sex: 'K', fatherId: 'p_mid', birthDate: '1935' });
+    app.Share.st.name = 'Adam'; app.Share.save(); await app.Share.create(); app.shareTreeModal();
+  });
+  await expect(page.locator('.sh-living')).toContainText('troligen döda');
+  await page.click('#shLiving');
+  const row = page.locator('.lv-row', { hasText: 'Odaterad Ana' });
+  await expect(row.locator('input')).toBeChecked();
+  await expect(page.locator('.lv-row', { hasText: 'Barnbarn Ana' }).locator('input')).not.toBeChecked();
+  await page.click('#lvNone'); await row.locator('input').check();
+  await page.click('#lvSave');
+  expect(await page.evaluate(() => [app.ALL.persons.p_ana.deceased, app.ALL.persons.p_gk.deceased])).toEqual([true, undefined]);
+  // Back in the share dialog, one undo step brings it back.
+  await expect(page.locator('#shLink')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.click('#undoBtn');
+  await expect.poll(() => page.evaluate(() => app.ALL.persons.p_ana.deceased)).toBeUndefined();
+});

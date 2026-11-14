@@ -1,12 +1,12 @@
 /* Släktsagan · share.js — Sharing: end-to-end encrypted trees on Supabase, publish, merge, history. */
-import { Unpub } from './backup.js?v=48';
-import { BLOB, IDB, blobRefs, fullName, homePerson, migrateInline } from './domain.js?v=48';
-import { confirmBox, modal } from './modal.js?v=48';
-import { renderAll } from './router.js?v=48';
-import { trees } from './start.js?v=48';
-import { ALL, applyView, archiveData, cols, ui } from './state.js?v=48';
-import { Hist, Store, setStatus } from './store.js?v=48';
-import { $, esc, toast } from './util.js?v=48';
+import { Unpub } from './backup.js?v=50';
+import { BLOB, IDB, blobRefs, fullName, homePerson, migrateInline } from './domain.js?v=50';
+import { confirmBox, modal } from './modal.js?v=50';
+import { renderAll } from './router.js?v=50';
+import { trees } from './start.js?v=50';
+import { ALL, applyView, archiveData, cols, ui } from './state.js?v=50';
+import { Hist, Store, setStatus } from './store.js?v=50';
+import { $, esc, toast } from './util.js?v=50';
 
 /* ============ Boot ============ */
 /* ============ SHARING (Supabase, end-to-end encrypted) ============
@@ -49,7 +49,7 @@ const Share={
     if(t.v!==2){const d=await KinCore.decryptJSON(payload,t.key); return {data:cols(d),meta:d.meta};}
     const d=await this.tryKeys(payload,[t.r,...(t.keys||[])]);
     if(d.v!==2) return {data:cols(d),meta:d.meta}; // a version from before the tree got read-only links
-    const pub=cols(d); pub.comments={};
+    const pub=cols(d); pub.comments={}; pub.logs={};
     if(!t.e) return {data:pub,meta:d.meta};
     let priv; try{priv=await this.tryKeys(d.priv,[t.e,...(t.keys||[])]);}catch(e){return {data:pub,meta:d.meta,lost:true};}
     for(const k of priv.keys||[]) if(!(t.keys||[]).includes(k)){(t.keys=t.keys||[]).push(k);}
@@ -273,6 +273,45 @@ function askName(){return new Promise(res=>{modal(`<h3>Vad heter du?</h3><p clas
   <label class="f"><span>Ditt namn</span><input class="t" id="anName" placeholder="t.ex. Adam"></label>
   <div class="foot"><button class="btn" data-x>Avbryt</button><button class="btn primary" data-ok>Fortsätt</button></div>`,(ov,close)=>{const i=ov.querySelector('#anName'); i.focus();
   const done=v=>{close(); res(v);}; ov.querySelector('[data-x]').onclick=()=>done(''); ov.querySelector('[data-ok]').onclick=()=>{const v=i.value.trim(); if(!v){i.focus();return;} done(v);}; i.onkeydown=e=>{if(e.key==='Enter') ov.querySelector('[data-ok]').click();};});});}
+/** Who readers will see as living, and who of them almost certainly isn't. */
+function livingStats(){
+  const now=new Date().getFullYear(), ps=ALL.persons, kids=KinCore.kidsIndex(ps);
+  const rows=[]; for(const p of Object.values(ps)){ const i=KinCore.livingInfo(p,ps,now,kids); if(i.living) rows.push({p,...i,suggest:KinCore.likelyDeceased(p,ps,now,kids)}); }
+  return rows;
+}
+function livingLine(){
+  const rows=livingStats(); if(!rows.length) return '';
+  const sug=rows.filter(r=>r.suggest).length;
+  return `<p class="small sh-living">🔒 <b>${rows.length}</b> ${rows.length===1?'person räknas':'personer räknas'} som levande och visas bara med namn och födelseår i läslänken.${sug?` <b>${sug}</b> av dem är troligen döda.`:''} <a href="#" id="shLiving">Granska</a></p>`;
+}
+/**
+ * Review everyone counted as living. People with no dates of their own whose descendants
+ * were born more than 80 years ago are ticked from the start; one save, one undo step.
+ */
+function livingModal(after){
+  const now=new Date().getFullYear();
+  const rows=livingStats().sort((a,b)=>(b.suggest-a.suggest)||((a.year||9999)-(b.year||9999))||fullName(a.p).localeCompare(fullName(b.p),'sv'));
+  if(!rows.length){ toast('Ingen räknas som levande.'); return; }
+  const why=r=>r.year?(r.estimated?`ingen egen födelsedag – uppskattat ~${r.year}`:`född ${r.year} · ${now-r.year} år`):'inga årtal att gå på';
+  modal(`<h3>Vilka räknas som levande?</h3>
+    <p class="muted" style="margin-top:-4px;line-height:1.5">De här visas bara med namn och födelseår för den som har läslänken. Kryssa i dem som har dött – de räknas då som döda även utan datum. ${rows.some(r=>r.suggest)?'De ikryssade har barn eller barnbarn födda för mer än 80 år sedan.':''}</p>
+    <div class="lv-bar"><button class="btn sm" id="lvAll">Kryssa i alla</button><button class="btn sm" id="lvNone">Inga</button><span class="small muted" id="lvCount"></span></div>
+    <div class="lv-list">${rows.map(r=>`<label class="lv-row${r.suggest?' sug':''}"><input type="checkbox" value="${esc(r.p.id)}" ${r.suggest?'checked':''}><span class="lv-n">${esc(fullName(r.p))}</span><span class="small muted">${esc(why(r))}</span></label>`).join('')}</div>
+    <div class="foot"><button class="btn" data-x>Avbryt</button><button class="btn primary" id="lvSave">Markera som avlidna</button></div>`,(ov,close)=>{
+    const boxes=[...ov.querySelectorAll('.lv-list input')];
+    const upd=()=>{const n=boxes.filter(b=>b.checked).length; ov.querySelector('#lvCount').textContent=n?`${n} ikryssade`:''; ov.querySelector('#lvSave').disabled=!n;};
+    boxes.forEach(b=>b.onchange=upd); upd();
+    ov.querySelector('#lvAll').onclick=()=>{boxes.forEach(b=>b.checked=true); upd();};
+    ov.querySelector('#lvNone').onclick=()=>{boxes.forEach(b=>b.checked=false); upd();};
+    ov.querySelector('[data-x]').onclick=()=>{close(); if(after) after();};
+    ov.querySelector('#lvSave').onclick=async()=>{
+      const ids=boxes.filter(b=>b.checked).map(b=>b.value);
+      clearTimeout(Hist._t); Hist.h.close(); Hist.label(`Markerade ${ids.length} som avlidna`);
+      await Store.putMany(ids.map(id=>({...ALL.persons[id],deceased:true})));
+      close(); toast(`${ids.length} ${ids.length===1?'person är markerad':'personer är markerade'} som avlidna. Ångra med Ctrl+Z.`,6000); if(after) after();
+    };
+  });
+}
 function shareTreeModal(){
   if(!Share.enabled()){toast('Delning är inte påslagen på den här sidan.');return;}
   if(Store.demo){toast('Stäng exemplet först – exemplet kan inte delas.');return;}
@@ -296,6 +335,7 @@ function shareTreeModal(){
     <p class="muted" style="margin-top:-4px;line-height:1.5">Ändringar syns för de andra först när de publiceras. Trädet är krypterat – inte ens servern kan läsa det.</p>
     ${linkRow('shLink','✏️ Redigeringslänk – kan ändra',Share.link(),'Bara till dem som ska kunna lägga till och rätta.')}
     ${linkRow('shRead','👀 Läslänk – kan bara titta',Share.readLink(),'Levande personer visas med namn och födelseår. Frågor och kommentarer syns inte.')}
+    ${livingLine()}
     ${stateBox}
     <details class="sgroup"><summary class="slab" style="cursor:pointer">Byt ut en länk</summary>
       <p class="small muted" style="line-height:1.5">Den gamla länken slutar fungera direkt. Skicka den nya till dem som ska ha den. Dina opublicerade ändringar följer med.</p>
@@ -306,7 +346,7 @@ function shareTreeModal(){
     <p class="muted" style="margin-top:-4px;line-height:1.5">Alla med länken kan se och ändra. Ändringar syns för de andra först när de publiceras. Trädet är krypterat – inte ens servern kan läsa det.</p>
     ${linkRow('shLink','Länk att skicka till släkten',Share.link(),'')}
     ${stateBox}
-    <div class="sh-up"><b>Nytt: läslänk</b><p class="small" style="line-height:1.5;margin:4px 0 8px">Få en länk som bara kan titta, där personer som lever visas med namn och födelseår. Du får också en ny redigeringslänk, och den gamla länken slutar fungera – skicka den nya till dem som ska kunna ändra.</p><button class="btn sm primary" id="shUpgrade">Skapa läslänk</button></div>
+    <div class="sh-up"><b>Nytt: läslänk</b><p class="small" style="line-height:1.5;margin:4px 0 8px">Få en länk som bara kan titta, där personer som lever visas med namn och födelseår. Du får också en ny redigeringslänk, och den gamla länken slutar fungera – skicka den nya till dem som ska kunna ändra.</p><button class="btn sm primary" id="shUpgrade">Skapa läslänk</button>${livingLine()}</div>
     ${otherList}
     <div class="foot"><button class="btn" data-x>Stäng</button></div>`
   :`<h3>Dela släktträdet</h3>
@@ -320,6 +360,7 @@ function shareTreeModal(){
     ov.querySelectorAll('[data-sw]').forEach(b=>b.onclick=()=>{close(); Share.switchTo(b.dataset.sw||null); toast(b.dataset.sw?'Bytte till det delade trädet.':'Du är i ditt lokala arkiv.');});
     ov.querySelectorAll('[data-copy]').forEach(cp=>cp.onclick=async()=>{const i=q('#'+cp.dataset.copy); i.select(); try{await navigator.clipboard.writeText(i.value);}catch(e){document.execCommand('copy');} cp.textContent='Kopierad ✓';});
     const rk=(sel,what,title,text)=>{const b=q(sel); if(b) b.onclick=()=>{close(); confirmBox(title,text,'Byt',async()=>{ if(await Share.rekey(what)){ shareTreeModal(); toast('Klart! Kopiera den nya länken och skicka den.',6000);} });};};
+    {const lv=q('#shLiving'); if(lv) lv.onclick=e=>{e.preventDefault(); close(); livingModal(()=>shareTreeModal());};}
     rk('#shUpgrade','upgrade','Skapa läslänk?','Du får en läslänk och en ny redigeringslänk. Den gamla länken slutar fungera, så skicka den nya redigeringslänken till dem som ska kunna ändra.');
     rk('#shNewEdit','edit','Byta redigeringslänk?','Den nuvarande redigeringslänken slutar fungera för alla. De som har den kan fortfarande titta, som med läslänken. Skicka den nya till dem som ska fortsätta ändra.');
     rk('#shNewRead','read','Byta läslänk?','Både läslänken och redigeringslänken byts ut och de gamla slutar fungera. Skicka de nya länkarna till dem som ska ha dem.');
@@ -334,4 +375,4 @@ function shareTreeModal(){
   });
 }
 
-export { Share, treeTitle, historyModal, askName, shareTreeModal };
+export { Share, treeTitle, historyModal, askName, shareTreeModal, livingModal };

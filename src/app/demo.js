@@ -1,9 +1,9 @@
 /* Släktsagan · demo.js — The House of Vasa example (in memory only). */
-import { mapState } from './map.js?v=48';
-import { VIEWS, renderAll } from './router.js?v=48';
-import { ALL, applyView, archiveData, ui } from './state.js?v=48';
-import { Hist, Store } from './store.js?v=48';
-import { $, clone, toast, uid } from './util.js?v=48';
+import { mapState } from './map.js?v=50';
+import { VIEWS, renderAll } from './router.js?v=50';
+import { ALL, applyView, archiveData, ui } from './state.js?v=50';
+import { Hist, Store } from './store.js?v=50';
+import { $, clone, toast, uid } from './util.js?v=50';
 
 /* ============ Demo ============ */
 function demoData(){
@@ -112,7 +112,7 @@ function loadDemo(){
   const {places,sources,persons}=demoData();
   Store.demo={saved:archiveData(),focus:ui.focus,viewId:ui.viewId};
   const m=a=>Object.fromEntries(a.map(o=>[o.id,clone(o)]));
-  ALL.persons=m(persons); ALL.places=m(places); ALL.sources=m(sources); ALL.views={}; ALL.comments={}; Hist.clear();
+  ALL.persons=m(persons); ALL.places=m(places); ALL.sources=m(sources); ALL.views={}; ALL.comments={}; ALL.logs={}; Hist.clear();
   ui.viewId=null; ui.focus='p_gustav1'; ui.ancGen=2; ui.descGen=3; ui.treeKey=null; ui.sel=null;
   applyView();
   toast('Det här är ett exempel. Inget sparas – dina egna uppgifter ligger kvar orörda.',5000);

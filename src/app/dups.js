@@ -1,10 +1,10 @@
 /* Släktsagan · dups.js — Duplicate finder and merging. */
-import { P, children, fullName, partners, placeName } from './domain.js?v=48';
-import { confirmBox } from './modal.js?v=48';
-import { setFocus } from './router.js?v=48';
-import { ALL, S, ui } from './state.js?v=48';
-import { Hist, Store } from './store.js?v=48';
-import { $, clone, dupScore, esc, norm, nrm, toast } from './util.js?v=48';
+import { P, children, fullName, partners, placeName } from './domain.js?v=50';
+import { confirmBox } from './modal.js?v=50';
+import { setFocus } from './router.js?v=50';
+import { ALL, S, ui } from './state.js?v=50';
+import { Hist, Store } from './store.js?v=50';
+import { $, clone, dupScore, esc, norm, nrm, toast } from './util.js?v=50';
 
 /* ============ DUPLICATES ============ */
 function findDups(){
@@ -38,6 +38,7 @@ async function mergePersons(keepId,dropId){
   const k=clone(P(keepId)), d=P(dropId); if(!k||!d) return;
   Hist.label('Sammanslagning av '+fullName(d)+' med '+fullName(k),1500);
   for(const c of Object.values(ALL.comments)) if(c.personId===dropId) Store.put({...c,personId:keepId},{silent:true});
+  for(const l of Object.values(ALL.logs||{})) if(l.personId===dropId) Store.put({...l,personId:keepId},{silent:true});
   for(const f of ['given','callName','surname','sex','birthDate','birthPlace','deathDate','deathPlace','occupation','fatherId','motherId']) if(!k[f]&&d[f]) k[f]=d[f];
   if(d.notes&&d.notes!==k.notes) k.notes=[k.notes,d.notes].filter(Boolean).join('\n\n');
   const evKey=e=>e.type+'|'+(e.date||'')+'|'+(e.placeId||'');

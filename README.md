@@ -74,6 +74,7 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 - **What's new since your last visit:** in a shared tree, the start page lists who others added, changed (and what: birth, photos, sources…) or removed, and their new questions, with who published them. Changed people carry a small *Ny*/*Ändrad* badge in the tree until you mark it as seen.
 - **Photo gallery:** the person card shows photos with their captions, the first one large, and as a swipeable strip on phones. The viewer steps through them with arrows, arrow keys, swipes and a thumbnail strip.
 - **Kinship as a chain on phones:** on a narrow screen "Hur är vi släkt?" shows the way between two people as one readable chain (*Gustav II Adolf · son till · Karl IX · son till · Gustav Vasa*), also over the tree.
+- **Research log:** per person, note what you looked for, where (a source from the archive plus page or image), when and what came of it – *found*, *partly*, *not found*, or *to look for* later. Empty searches are kept so nobody searches the same book twice, planned ones gather under *Att leta efter* on the start page, and a find can become a citation in one tick. In a shared tree the log is for editors only.
 
 <details>
 <summary><b>Swedish terms used in the interface</b></summary>
@@ -116,7 +117,7 @@ scripts/bump.mjs    bumps the asset version everywhere for a release
 ```
 
 - **No framework, no bundler.** The app is vanilla JavaScript, split into ES modules that the browser loads directly (every import carries the release's `?v=` so a browser never mixes two releases; `npm run bump` moves them all), with [D3](https://d3js.org) for the tree, fan chart, timeline and map. [SheetJS](https://sheetjs.com) and [jsPDF](https://github.com/parallax/jsPDF) load lazily, only when you import or print.
-- **Data model:** five document kinds (`person`, `place`, `source`, `view`, `comment`) stored as flat JSON documents. Relationships live on the person (`fatherId`, `motherId`, `spouseIds`), and events and citations are embedded.
+- **Data model:** six document kinds (`person`, `place`, `source`, `view`, `comment`, `log`) stored as flat JSON documents. Relationships live on the person (`fatherId`, `motherId`, `spouseIds`), and events and citations are embedded.
 - **Storage adapters:**
   - IndexedDB when the app runs standalone, such as on GitHub Pages: the archive text and photos, with no 5 MB cap (archives from older versions are moved over from `localStorage` automatically). Edits made just before a tab closes are also written synchronously as an emergency copy, so nothing is lost.
   - A realtime document store with per-user attribution when it runs as a Claude artifact.
@@ -157,7 +158,7 @@ To run your own: create a Supabase project, run the files in `supabase/migration
 
 Done recently: a family book as PDF, undo/redo for every change, a reminder before leaving with unpublished changes, photos dropped straight onto tree cards, backup reminders, GEDCOM import, Swedish source citations, a presentation page for first-time visitors, questions and comments per person, browser tests in CI, the app split into ES modules, a locked tree that grows to include whoever you pick, "On this day", encrypted sharing with publish and merge, version history, photo storage with thumbnails, voice memories, animated tree, kinship path in the tree, archive in IndexedDB, self-hosted fonts, phone layout, installable offline app (PWA).
 
-**Next:** a research log per person, transcription of voice memories, English UI.
+**Next:** transcription of voice memories, English UI.
 
 ## License
 
