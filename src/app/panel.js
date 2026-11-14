@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, formerNamesText, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=52';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=52';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=52';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=52';
-import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=52';
-import { Share, askName } from './share.js?v=52';
-import { logSection } from './research.js?v=52';
-import { linkModal } from './start.js?v=52';
-import { ALL, S, ui } from './state.js?v=52';
-import { Hist, Store } from './store.js?v=52';
-import { openCard } from './theme.js?v=52';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=52';
-import { fillNames, hideModal } from './views.js?v=52';
+import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=55';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=55';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=55';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=55';
+import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=55';
+import { Share, askName } from './share.js?v=55';
+import { logSection } from './research.js?v=55';
+import { linkModal } from './start.js?v=55';
+import { ALL, S, ui } from './state.js?v=55';
+import { Hist, Store } from './store.js?v=55';
+import { openCard } from './theme.js?v=55';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=55';
+import { fillNames, hideModal } from './views.js?v=55';
 
 /* ============ PANEL ============ */
 function renderPanel(){
@@ -42,7 +42,7 @@ function personPanel(p){
   const cites=p.citations||[];
   const aboutLabel=a=>{if(!a) return 'Allmänt'; if(a.startsWith('event:')){const e=(p.events||[]).find(e=>'event:'+e.id===a); return e?e.type+(e.date?' '+e.date:''):'Händelse';} return a;};
   return `<div class="ph"><div class="top">
-      ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?avImg(p):`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" accept="image/*" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div>`}
+      ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?avImg(p):`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" accept="${photoAccept()}" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div>`}
       <div style="flex:1;min-width:0"><h3>${fullHtml(p)}</h3>${p.formerNames&&formerNamesText(p)?`<div class="fname">${esc(formerNamesText(p))}</div>`:''}<div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
       ${closeBtn}</div>
     <div class="acts">
@@ -223,7 +223,7 @@ function recordModal(o,{forImg}={}){
 function mediaSection(o){
   if(!E.canEdit&&!(o.media||[]).some(m=>!isAudio(m))) return '';
   const ed=E.canEdit; const can=ed;
-  return `<div class="sec"><h4>Bilder &amp; dokument ${can?`<label class="btn sm" style="cursor:pointer">+ Ladda upp<input type="file" id="upl" multiple accept="${E.assets?'image/*,application/pdf':'image/*'}" hidden></label>`:''}</h4>
+  return `<div class="sec"><h4>Bilder &amp; dokument ${can?`<label class="btn sm" style="cursor:pointer">+ Ladda upp<input type="file" id="upl" multiple accept="${E.assets?'image/*,application/pdf':photoAccept()}" hidden></label>`:''}</h4>
     <div id="uplprog"></div>
     ${(o.media||[]).some(m=>!isAudio(m))?`<div class="media">${o.media.map((m,i)=>isAudio(m)?'':`<div class="m" data-media="${i}" title="${esc(m.caption||m.name)}">${/^image\//.test(m.contentType||'')?`<img src="${esc(thumbUrl(m))}" alt="${esc(m.caption||'')}" loading="lazy">`:`📄<br>${esc((m.name||'dokument').slice(0,26))}`}${m.profile?'<span style="position:absolute;top:4px;left:4px;background:var(--ink);color:#fff;border-radius:99px;font-size:10px;padding:1px 6px">profil</span>':''}</div>`).join('')}</div>`:`<div class="muted small">${can?(E.assets?'Lägg till foton, inskannade brev eller kyrkboksutdrag (bild eller PDF).':'Lägg till foton eller inskannade dokument som bild. Bilderna förminskas och sparas i webbläsaren.'):'Inga filer.'}</div>`}
   </div>`;
@@ -334,10 +334,32 @@ function citeForm(p){
     Store.put(q);
   };
 }
-function shrinkImage(file,max=900,q=.8){
+/** What the file picker should offer. On phones no filter: then Android shows its full chooser
+   (Files, Downloads, Drive …) instead of only the photo gallery; we check the files ourselves. */
+const photoAccept=()=>window.matchMedia&&matchMedia('(pointer:coarse)').matches?'':'image/*,.heic,.heif';
+/** HEIC/HEIF – what iPhones and many Android phones save photos as. */
+const isHeic=f=>/^image\/hei[cf]/i.test(f.type||'')||/\.hei[cf]$/i.test(f.name||'');
+/** Is this a photo we can take? Some phones hand over files with no type at all. */
+const isPhotoFile=f=>/^image\//.test(f.type||'')||isHeic(f)||(!f.type&&/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(f.name||''));
+let _heic=null;
+/** Turn a HEIC photo into a JPEG the browser can draw. Safari can do it itself; others get a converter, loaded only when needed. */
+async function decodableBlob(file){
+  if(!isHeic(file)) return file;
+  const ok=await new Promise(r=>{const u=URL.createObjectURL(file), im=new Image(); im.onload=()=>{URL.revokeObjectURL(u); r(true);}; im.onerror=()=>{URL.revokeObjectURL(u); r(false);}; im.src=u;});
+  if(ok) return file;
+  if(!_heic) _heic=new Promise((r,j)=>{const sc=document.createElement('script'); sc.src='vendor/heic2any-0.0.4.min.js'; sc.onload=()=>r(window.heic2any); sc.onerror=()=>{_heic=null; j(new Error('kunde inte ladda HEIC-omvandlaren'));}; document.head.appendChild(sc);});
+  const conv=await _heic; const out=await conv({blob:file,toType:'image/jpeg',quality:.92});
+  return Array.isArray(out)?out[0]:out;
+}
+/** Read a photo from a file, at most `max` px on the long side, as a JPEG data URL. */
+async function shrinkImage(file,max=2400,q=.88){
+  file=await decodableBlob(file);
   return new Promise((res,rej)=>{const img=new Image(); const url=URL.createObjectURL(file);
-    img.onload=()=>{const k=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg',q));};
+    img.onload=()=>{ URL.revokeObjectURL(url);
+      // Stay well under the 4 MB a shared photo may take once encrypted: lower the quality, then the size.
+      for(const [m,qq] of [[max,q],[max,.8],[2000,.8],[1600,.78]]){ const k=Math.min(1,m/Math.max(img.width,img.height));
+        const d=resample(img,Math.round(img.width*k),Math.round(img.height*k)).toDataURL('image/jpeg',qq); if(d.length<2.6e6||m===1600){res(d);return;} } };
     img.onerror=()=>{URL.revokeObjectURL(url); rej(new Error('Kunde inte läsa bilden'));}; img.src=url;});
 }
 
-export { renderPanel, closeBtn, E, relRow, personPanel, fmtDur, commentsFor, openQuestions, openCount, ago, myName, commentSection, nameColor, addComment, bindComments, voiceRows, voiceSection, bindVoices, voiceEdit, saveVoice, audioDuration, recordModal, mediaSection, bindPanel, bindPersonPanel, placeOptions, personOptions, personByLabel, eventForm, citeLinks, citeForm, shrinkImage };
+export { isHeic, isPhotoFile, photoAccept, renderPanel, closeBtn, E, relRow, personPanel, fmtDur, commentsFor, openQuestions, openCount, ago, myName, commentSection, nameColor, addComment, bindComments, voiceRows, voiceSection, bindVoices, voiceEdit, saveVoice, audioDuration, recordModal, mediaSection, bindPanel, bindPersonPanel, placeOptions, personOptions, personByLabel, eventForm, citeLinks, citeForm, shrinkImage };

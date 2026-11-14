@@ -1,6 +1,6 @@
 /* Släktsagan · util.js — Small helpers: DOM, escaping, ids, dates, toasts. */
-import { P } from './domain.js?v=52';
-import { ALL } from './state.js?v=52';
+import { P } from './domain.js?v=55';
+import { ALL } from './state.js?v=55';
 
 /* Släktsagan — app shell. Storage keys keep the old 'klansagan-' prefix so saved and shared trees keep working. Pure logic lives in src/core.js (window.KinCore). */
 const {yearOf,dateKey,MONTHS,fmtDate,whenText,gedDate,genitive,slugify,parseDelimited,nrm,lev,dupScore}=window.KinCore;
@@ -41,4 +41,6 @@ const HIST=[
   {a:1991,b:1991,t:'Folkbokföringen till Skatteverket'},
 ];
 
-export { yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, blood, bloodTerm, sx, $, esc, uid, norm, clone, NOW_Y, toast, EVENT_TYPES, SOURCE_TYPES, HIST };
+/** Today's date where the user is, as YYYY-MM-DD (toISOString gives UTC: yesterday just after midnight in Sweden). */
+const localDay=(d=new Date())=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+export { localDay, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, blood, bloodTerm, sx, $, esc, uid, norm, clone, NOW_Y, toast, EVENT_TYPES, SOURCE_TYPES, HIST };

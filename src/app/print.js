@@ -1,13 +1,13 @@
 /* Släktsagan · print.js — Printing and PDF/PNG export. */
-import { storyOf } from './card.js?v=52';
-import { P, avatarMedia, avatarUrl, blobUrl, children, fullName, isAudio, lifeEvents, lifespan, partners, personLabel, placeName, siblings } from './domain.js?v=52';
-import { fmtDur } from './panel.js?v=52';
-import { ui } from './state.js?v=52';
-import { saveFile } from './importexport.js?v=52';
-import { modal } from './modal.js?v=52';
-import { S } from './state.js?v=52';
-import { applyTheme, cssv, themeName } from './theme.js?v=52';
-import { esc, fmtDate, toast, yearOf } from './util.js?v=52';
+import { storyOf } from './card.js?v=55';
+import { P, avatarMedia, avatarUrl, blobUrl, children, fullName, isAudio, lifeEvents, lifespan, partners, personLabel, placeName, siblings } from './domain.js?v=55';
+import { fmtDur } from './panel.js?v=55';
+import { ui } from './state.js?v=55';
+import { saveFile } from './importexport.js?v=55';
+import { modal } from './modal.js?v=55';
+import { S } from './state.js?v=55';
+import { applyTheme, cssv, themeName } from './theme.js?v=55';
+import { esc, fmtDate, toast, yearOf, localDay } from './util.js?v=55';
 
 /* ============ PRINT / PDF ============ */
 function loadJsPDF(){return new Promise((res,rej)=>{if(window.jspdf) return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.onload=res; s.onerror=()=>rej(new Error('Kunde inte ladda PDF-verktyget')); document.head.appendChild(s);});}
@@ -30,7 +30,7 @@ async function svgSnapshot(svgEl,title){
   const NS='http://www.w3.org/2000/svg';
   const bg=document.createElementNS(NS,'rect'); bg.setAttribute('x',bb.x-M); bg.setAttribute('y',bb.y-M-TH); bg.setAttribute('width',w); bg.setAttribute('height',h); bg.setAttribute('fill',paper); clone.insertBefore(bg,clone.firstChild);
   const t=document.createElementNS(NS,'text'); t.setAttribute('x',bb.x); t.setAttribute('y',bb.y-M-TH+30); t.setAttribute('style',`font-family:Georgia,serif;font-size:22px;font-weight:600;fill:${ink}`); t.textContent=title; clone.appendChild(t);
-  const t2=document.createElementNS(NS,'text'); t2.setAttribute('x',bb.x+bb.width); t2.setAttribute('y',bb.y-M-TH+30); t2.setAttribute('style',`font-family:Helvetica,Arial,sans-serif;font-size:11px;fill:${ink3};text-anchor:end`); t2.textContent='Släktsagan · '+fmtDate(new Date().toISOString().slice(0,10)); clone.appendChild(t2);
+  const t2=document.createElementNS(NS,'text'); t2.setAttribute('x',bb.x+bb.width); t2.setAttribute('y',bb.y-M-TH+30); t2.setAttribute('style',`font-family:Helvetica,Arial,sans-serif;font-size:11px;fill:${ink3};text-anchor:end`); t2.textContent='Släktsagan · '+fmtDate(localDay()); clone.appendChild(t2);
   for(const im of clone.querySelectorAll('image')){const href=im.getAttribute('href'); const d=await toDataURL(href); if(d) im.setAttribute('href',d); else im.remove();}
   const xml=new XMLSerializer().serializeToString(clone);
   const url=URL.createObjectURL(new Blob([xml],{type:'image/svg+xml;charset=utf-8'}));
@@ -50,7 +50,7 @@ function printChart(svgEl,title,slug,{book}={}){
       const k=b.dataset.k; ov.querySelector('#prProg').textContent='Skapar fil…';
       try{
         const {canvas,w,h}=await svgSnapshot(svgEl,title);
-        const stamp=new Date().toISOString().slice(0,10);
+        const stamp=localDay();
         if(k==='png'){const blob=await new Promise(r=>canvas.toBlob(r,'image/png')); close(); await saveFile(`${slug}-${stamp}.png`,blob); return;}
         await loadJsPDF(); const {jsPDF}=window.jspdf; const land=w>=h; const fmt=k==='pdf'?'a3':'a4';
         const doc=new jsPDF({orientation:land?'landscape':'portrait',unit:'mm',format:fmt});
@@ -149,7 +149,7 @@ async function familyBookPdf(list,o,progress=()=>{}){
   const span=list.map(x=>yearOf(x.p.birthDate)).filter(Boolean); 
   doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(...MUTED);
   doc.text(pdfT(`${list.length} personer${span.length?` · ${Math.min(...span)}–${Math.max(...span)}`:''}`),W/2,cover?200:152,{align:'center'});
-  doc.setFontSize(9); doc.text(pdfT(`Sammanställd ${fmtDate(new Date().toISOString().slice(0,10))} med Släktsagan`),W/2,H-24,{align:'center'});
+  doc.setFontSize(9); doc.text(pdfT(`Sammanställd ${fmtDate(localDay())} med Släktsagan`),W/2,H-24,{align:'center'});
 
   /* the tree as a picture (landscape page) */
   const landPages=new Set(), tocAt=2; doc.addPage('a4','portrait'); // the table of contents is drawn here at the end, when page numbers are known

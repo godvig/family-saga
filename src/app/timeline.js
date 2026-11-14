@@ -1,9 +1,9 @@
 /* Släktsagan · timeline.js — The timeline. */
-import { P, fullName, lifeEvents, placeName, scopeSet, sexColor } from './domain.js?v=52';
-import { emptyState, showPerson } from './router.js?v=52';
-import { S, ui } from './state.js?v=52';
-import { cssv } from './theme.js?v=52';
-import { $, HIST, NOW_Y, dateKey, esc } from './util.js?v=52';
+import { P, fullName, lifeEvents, placeName, scopeSet, sexColor } from './domain.js?v=55';
+import { emptyState, showPerson } from './router.js?v=55';
+import { S, ui } from './state.js?v=55';
+import { cssv } from './theme.js?v=55';
+import { $, HIST, NOW_Y, dateKey, esc } from './util.js?v=55';
 
 /* ============ TIMELINE ============ */
 function renderTimeline(){
@@ -24,7 +24,7 @@ function renderTimeline(){
   }
   rows.sort((a,b)=>a.s-b.s);
   const skipped=ppl.length-rows.length;
-  const LW=190,RH=24,TOP=74;
+  const LW=190,RH=24; let TOP=74;
   v.innerHTML=`<div class="view-pad" style="max-width:none">
     <div class="toolbar"><h2>Tidslinje</h2>
       <div class="seg" id="tlScope">${[['alla','Alla'],['anor','Anor'],['attlingar','Ättlingar']].map(([k,t])=>`<button data-k="${k}" class="${ui.tlScope===k?'on':''}">${t}${k!=='alla'&&P(ui.focus)?' till '+esc(P(ui.focus).given||''):''}</button>`).join('')}</div>
@@ -41,19 +41,26 @@ function renderTimeline(){
   $('#tlList').innerHTML=list.length?`<table class="list m-events"><thead><tr><th style="width:120px">Datum</th><th>Händelse</th><th>Person</th><th>Plats</th></tr></thead><tbody>${list.map(r=>`<tr class="click" data-id="${r.p.id}"><td>${esc(r.e.date)}</td><td>${esc(r.e.type)}${r.e.desc?`<div class="small muted">${esc(r.e.desc)}</div>`:''}</td><td><span class="dot" style="background:${sexColor(r.p)}"></span>${esc(fullName(r.p))}</td><td>${esc(placeName(r.e.placeId))}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Inga daterade händelser.</p>';
   $('#tlList').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>showPerson(tr.dataset.id));
   if(!rows.length) return;
-  const box=$('#tlChart'); const W=Math.max(box.clientWidth,760); const H=TOP+rows.length*RH+16;
+  const box=$('#tlChart'); const W=Math.max(box.clientWidth,760);
   const x0=Math.floor((d3.min(rows,r=>r.s)-5)/10)*10, x1=Math.min(NOW_Y+5,Math.ceil((d3.max(rows,r=>r.t)+5)/10)*10);
   const x=d3.scaleLinear().domain([x0,x1]).range([LW,W-20]);
+  // Historical events: each label gets the first row above the chart where it doesn't overlap
+  // another, and the chart moves down to make room – nothing is drawn on top of anything else.
+  const hs=ui.tlHist?HIST.filter(h=>h.b>=x0&&h.a<=x1):[], lanes=[], placed=[];
+  if(hs.length){ const ctx=document.createElement('canvas').getContext('2d'); ctx.font='10.5px '+(cssv('--sans')||'sans-serif');
+    for(const h of hs){ const xa=x(h.a), xb=Math.max(x(h.b+1),xa+2), w=ctx.measureText(h.t).width+10, right=xa+w>W-6;
+      const l0=right?xb-w:xa, l1=right?xb:xa+w; let lane=lanes.findIndex(end=>end<=l0); if(lane<0){lane=lanes.length; lanes.push(-Infinity);} lanes[lane]=l1;
+      placed.push({h,xa,xb,right,lane}); }
+    TOP=Math.max(74,40+lanes.length*13+8); }
+  const H=TOP+rows.length*RH+16;
   const svg=d3.select(box).append('svg').attr('width',W).attr('height',H);
   const defs=svg.append('defs');
   ['M','K','U'].forEach(s=>{const c={M:cssv('--male'),K:cssv('--female'),U:cssv('--unk')}[s];
     const gR=defs.append('linearGradient').attr('id','fr'+s); gR.append('stop').attr('offset','0').attr('stop-color',c); gR.append('stop').attr('offset','1').attr('stop-color',c).attr('stop-opacity',0);
     const gL=defs.append('linearGradient').attr('id','fl'+s); gL.append('stop').attr('offset','0').attr('stop-color',c).attr('stop-opacity',0); gL.append('stop').attr('offset','1').attr('stop-color',c);});
-  if(ui.tlHist){
-    const hs=HIST.filter(h=>h.b>=x0&&h.a<=x1);
-    const hg=svg.append('g');
-    hs.forEach((h,i)=>{const xa=x(h.a),xb=Math.max(x(h.b+1),xa+2); hg.append('rect').attr('class','hist-band').attr('x',xa).attr('y',TOP-6).attr('width',xb-xa).attr('height',H-TOP); hg.append('text').attr('class','hist-lbl').attr('x',xa>W-200?xb-2:xa+2).attr('text-anchor',xa>W-200?'end':'start').attr('y',TOP-10-(i%3)*12).text(h.t).append('title').text(h.a===h.b?h.a+': '+h.t:h.a+'–'+h.b+': '+h.t);});
-  }
+  if(placed.length){ const hg=svg.append('g');
+    for(const {h,xa,xb,right,lane} of placed){ hg.append('rect').attr('class','hist-band').attr('x',xa).attr('y',TOP-6).attr('width',xb-xa).attr('height',H-TOP);
+      hg.append('text').attr('class','hist-lbl').attr('x',right?xb-2:xa+2).attr('text-anchor',right?'end':'start').attr('y',TOP-10-lane*13).text(h.t).append('title').text(h.a===h.b?h.a+': '+h.t:h.a+'–'+h.b+': '+h.t); } }
   svg.append('g').attr('class','axis').attr('transform',`translate(0,${H-4})`);
   svg.append('g').attr('class','axis').attr('transform',`translate(0,24)`).call(d3.axisTop(x).ticks(Math.min(14,(x1-x0)/10)).tickFormat(d3.format('d')).tickSize(-(H-24))).call(g=>g.selectAll('.tick line').attr('stroke',cssv('--grid'))).call(g=>g.select('.domain').remove());
   const sel=ui.sel&&ui.sel.type==='person'?ui.sel.id:null;

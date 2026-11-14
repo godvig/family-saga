@@ -1,13 +1,13 @@
 /* Släktsagan · importexport.js — Excel/CSV and GEDCOM import, export (GEDCOM, CSV, JSON backup). */
-import { Backup } from './backup.js?v=52';
-import { exitDemo } from './demo.js?v=52';
-import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=52';
-import { confirmBox, modal } from './modal.js?v=52';
-import { E } from './panel.js?v=52';
-import { renderAll, setFocus } from './router.js?v=52';
-import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=52';
-import { Hist, Store } from './store.js?v=52';
-import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf } from './util.js?v=52';
+import { Backup } from './backup.js?v=55';
+import { exitDemo } from './demo.js?v=55';
+import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=55';
+import { confirmBox, modal } from './modal.js?v=55';
+import { E } from './panel.js?v=55';
+import { renderAll, setFocus } from './router.js?v=55';
+import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=55';
+import { Hist, Store } from './store.js?v=55';
+import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf, localDay } from './util.js?v=55';
 
 /* ============ IMPORT / EXPORT ============ */
 const FIELDS=[
@@ -232,7 +232,7 @@ async function saveFile(name,data){
 }
 function doExport(kind){ return withAll(()=>doExport0(kind)); }
 async function doExport0(kind){
-  const stamp=new Date().toISOString().slice(0,10);
+  const stamp=localDay();
   if(kind==='json'){ const inl=async col=>{const o=clone(ALL[col]); for(const d of Object.values(o)) {const map={}; for(const m of d.media||[]){ if(blobId(m)){const old=m.url; m.url=await blobUrl(m); map[old]=m.url;} delete m.thumb; } for(const m of d.media||[]) if(m.forImg&&map[m.forImg]) m.forImg=map[m.forImg];} return o;};
     const [persons,places,sources]=await Promise.all([inl('persons'),inl('places'),inl('sources')]);
     saveFile(`slaktsagan-${stamp}.json`,JSON.stringify({app:'Släktsagan',version:1,exported:new Date().toISOString(),persons,places,sources,views:ALL.views,comments:ALL.comments,logs:ALL.logs},null,1)); Backup.mark(); }
@@ -253,7 +253,7 @@ function toGedcom(){
   const getFam=(h,w)=>{const k=famKey(h,w); return fams[k]=fams[k]||{id:'@F'+(Object.keys(fams).length+1)+'@',h,w,c:[]};};
   for(const p of Object.values(S.persons)){ if(p.fatherId||p.motherId) getFam(P(p.fatherId)?p.fatherId:'',P(p.motherId)?p.motherId:'').c.push(p.id); }
   for(const p of Object.values(S.persons)) for(const s of partners(p)){ const [h,w]=p.sex==='K'?[s.id,p.id]:[p.id,s.id]; if(!fams[famKey(h,w)]&&!fams[famKey(w,h)]) getFam(h,w); }
-  add(0,'HEAD'); add(1,'SOUR','SLAKTSAGAN'); add(2,'NAME','Släktsagan'); add(1,'GEDC'); add(2,'VERS','5.5.1'); add(2,'FORM','LINEAGE-LINKED'); add(1,'CHAR','UTF-8'); add(1,'DATE',gedDate(new Date().toISOString().slice(0,10)));
+  add(0,'HEAD'); add(1,'SOUR','SLAKTSAGAN'); add(2,'NAME','Släktsagan'); add(1,'GEDC'); add(2,'VERS','5.5.1'); add(2,'FORM','LINEAGE-LINKED'); add(1,'CHAR','UTF-8'); add(1,'DATE',gedDate(localDay()));
   const TAG={Dop:'BAPM',Konfirmation:'CONF',Begravning:'BURI',Utvandring:'EMIG',Invandring:'IMMI',Bosatt:'RESI',Yrke:'OCCU',Bouppteckning:'PROB',Militärtjänst:'_MILT'};
   const cites=(p,lvl,about)=>{for(const c of (p.citations||[]).filter(c=>c.about===about)) if(sid[c.sourceId]){add(lvl,'SOUR',sid[c.sourceId]); if(c.detail) add(lvl+1,'PAGE',c.detail);}};
   for(const p of Object.values(S.persons)){

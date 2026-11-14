@@ -4,13 +4,13 @@
 
    Entries are their own documents ({kind:'log'}) like comments, so two people logging at the
    same time merge without losing anything. In a shared tree they are only for editors. */
-import { P, shortName } from './domain.js?v=52';
-import { myName } from './panel.js?v=52';
-import { renderAll, select, setFocus } from './router.js?v=52';
-import { Share } from './share.js?v=52';
-import { ALL, S, ui } from './state.js?v=52';
-import { Hist, Store } from './store.js?v=52';
-import { clone, esc, fmtDate, toast, uid } from './util.js?v=52';
+import { P, shortName } from './domain.js?v=55';
+import { myName } from './panel.js?v=55';
+import { renderAll, select, setFocus } from './router.js?v=55';
+import { Share } from './share.js?v=55';
+import { ALL, S, ui } from './state.js?v=55';
+import { Hist, Store } from './store.js?v=55';
+import { clone, esc, fmtDate, toast, uid, localDay } from './util.js?v=55';
 
 const RESULT = {
   todo: { icon: '🔎', label: 'Att leta', hint: 'planerat' },
@@ -18,7 +18,7 @@ const RESULT = {
   partial: { icon: '🟡', label: 'Delvis' },
   notfound: { icon: '✖️', label: 'Hittade inte' },
 };
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localDay();
 
 /** A person's log: planned searches first, then the newest. */
 function logsFor(pid) {

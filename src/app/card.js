@@ -1,14 +1,14 @@
 /* Släktsagan · card.js — The person card page. */
-import { P, formerNamesText, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings, thumbUrl } from './domain.js?v=52';
-import { openLightbox } from './media.js?v=52';
-import { openPersonModal } from './modal.js?v=52';
-import { bindVoices, citeLinks, voiceRows } from './panel.js?v=52';
-import { personPdf } from './print.js?v=52';
-import { emptyState, setFocus } from './router.js?v=52';
-import { S, ui } from './state.js?v=52';
-import { Store } from './store.js?v=52';
-import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=52';
-import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=52';
+import { P, bestUrl, formerNamesText, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings } from './domain.js?v=55';
+import { openLightbox } from './media.js?v=55';
+import { openPersonModal } from './modal.js?v=55';
+import { bindVoices, citeLinks, voiceRows } from './panel.js?v=55';
+import { personPdf } from './print.js?v=55';
+import { emptyState, setFocus } from './router.js?v=55';
+import { S, ui } from './state.js?v=55';
+import { Store } from './store.js?v=55';
+import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=55';
+import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=55';
 
 /* ============ PERSON CARD ============ */
 function storyOf(p){
@@ -64,7 +64,7 @@ function renderCard(){
     <div class="pc-grid"><div>
       ${story||Store.canEdit?`<h3>Livsberättelse</h3><p class="story">${story?esc(story):'<span class="muted">Lägg till datum, platser och händelser så skrivs en berättelse automatiskt.</span>'}</p>`:''}
       ${imgs.some(isAudio)?`<h3>Röstminnen</h3><div class="vms">${voiceRows(p)}</div>`:''}
-      ${imgs.some(x=>!isAudio(x))?`<h3>Bilder &amp; dokument</h3><div class="gallery${imgs.filter(x=>!isAudio(x)).length>=3?' feat':''}">${imgs.map((mm,i)=>isAudio(mm)?'':`<figure class="m" data-img="${i}" title="${esc(mm.caption||mm.name||'')}" tabindex="0">${isImg(mm)?`<img src="${esc(thumbUrl(mm))}" alt="${esc(mm.caption||'')}" loading="lazy">`:`<span class="doc">📄<br>${esc((mm.name||'dokument').slice(0,30))}</span>`}${mm.caption?`<figcaption>${esc(mm.caption)}</figcaption>`:''}${imgs.some(x=>isAudio(x)&&x.forImg===mm.url)?'<span class="vm-mark" title="Har röstminne">🎙</span>':''}</figure>`).join('')}</div>`:''}
+      ${imgs.some(x=>!isAudio(x))?`<h3>Bilder &amp; dokument</h3><div class="gallery${imgs.filter(x=>!isAudio(x)).length>=3?' feat':''}">${imgs.map((mm,i)=>isAudio(mm)?'':`<figure class="m" data-img="${i}" title="${esc(mm.caption||mm.name||'')}" tabindex="0">${isImg(mm)?`<img src="${esc(bestUrl(mm))}" alt="${esc(mm.caption||'')}" loading="lazy">`:`<span class="doc">📄<br>${esc((mm.name||'dokument').slice(0,30))}</span>`}${mm.caption?`<figcaption>${esc(mm.caption)}</figcaption>`:''}${imgs.some(x=>isAudio(x)&&x.forImg===mm.url)?'<span class="vm-mark" title="Har röstminne">🎙</span>':''}</figure>`).join('')}</div>`:''}
       <h3>Tidslinje</h3><div class="vtl">${evs.map(e=>{const y=yearOf(e.date); const age=by&&y&&e.fixed!=='birth'?y-by:null; return `<div class="it"><div class="d">${esc(fmtDate(e.date)||'okänt datum')}${age!=null&&age>=0?` · ${age} år`:''}</div><b>${esc(e.type==='Övrigt'&&e.desc?e.desc:e.type)}</b>${e.placeId?` · ${esc(placeName(e.placeId))}`:''}${e.withId&&P(e.withId)?` · med ${esc(fullName(P(e.withId)))}`:''}${e.desc&&e.type!=='Övrigt'?`<div class="muted small">${esc(e.desc)}</div>`:''}</div>`;}).join('')||'<p class="muted">Inga händelser.</p>'}</div>
       ${p.notes?`<h3>Anteckningar</h3><p style="white-space:pre-wrap;line-height:1.6">${esc(p.notes)}</p>`:''}
     </div><div>

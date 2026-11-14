@@ -1,10 +1,10 @@
 /* Släktsagan · domain.js — Family logic on top of the store: names, places, relatives, ancestors, blobs and thumbnails. */
-import { loadImg } from './media.js?v=52';
-import { renderAll, select, setFocus } from './router.js?v=52';
-import { Share } from './share.js?v=52';
-import { ALL, S, applyView, bumpRev, ui } from './state.js?v=52';
-import { Store } from './store.js?v=52';
-import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=52';
+import { loadImg } from './media.js?v=55';
+import { renderAll, select, setFocus } from './router.js?v=55';
+import { Share } from './share.js?v=55';
+import { ALL, S, applyView, bumpRev, ui } from './state.js?v=55';
+import { Store } from './store.js?v=55';
+import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=55';
 
 /* ============ Domain helpers ============ */
 const P=id=>S.persons[id];
@@ -89,9 +89,28 @@ const PIXEL='data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICT
 const blobId=m=>m&&typeof m.url==='string'&&m.url.startsWith('kl:')?m.url.slice(3):null;
 /** URL to show for a media item. Stored photos load in the background and the page redraws. */
 /** Small version for trees, lists and avatars; falls back to the full image. */
-function thumbUrl(m){ if(!m) return ''; if(m.thumb){ const tid=blobId({url:m.thumb}); if(BLOB[tid]) return BLOB[tid]; const fid=blobId(m); if(fid&&BLOB[fid]) return BLOB[fid]; return murl({url:m.thumb}); } return murl(m); }
+/* Photos added before 2026-11-15 have soft 240 px thumbnails. Rather than changing the documents
+   (which in a shared tree would collide with everyone else doing the same), each device makes its
+   own sharper 480 px copy from the full photo and keeps it locally under "t2:<photo id>". */
+const T2=m=>'t2:'+blobId(m);
+function thumbUrl(m){ if(!m) return ''; if(!m.tv&&m.thumb&&BLOB[T2(m)]) return BLOB[T2(m)]; if(m.thumb){ const tid=blobId({url:m.thumb}); if(BLOB[tid]) return BLOB[tid]; const fid=blobId(m); if(fid&&BLOB[fid]) return BLOB[fid]; return murl({url:m.thumb}); } return murl(m); }
 /** Scale a data URL down to at most `max` px on the long side. */
-function makeThumb(dataUrl,max=240,q=.8){return loadImg(dataUrl).then(img=>{const k=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight)); const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(img.naturalWidth*k)); c.height=Math.max(1,Math.round(img.naturalHeight*k)); c.getContext('2d').drawImage(img,0,0,c.width,c.height); return c.toDataURL('image/jpeg',q);});}
+/**
+ * Draw an image at a smaller size without the blur and jagged edges of one big drawImage step:
+ * halve it repeatedly with high-quality smoothing, then do the last bit in one go.
+ */
+function resample(img,w,h){
+  let src=img, sw=img.naturalWidth||img.width, sh=img.naturalHeight||img.height;
+  while(sw/2>=w&&sh/2>=h){ const c=document.createElement('canvas'); c.width=Math.round(sw/2); c.height=Math.round(sh/2);
+    const x=c.getContext('2d'); x.imageSmoothingEnabled=true; x.imageSmoothingQuality='high'; x.drawImage(src,0,0,c.width,c.height); src=c; sw=c.width; sh=c.height; }
+  const c=document.createElement('canvas'); c.width=Math.max(1,w); c.height=Math.max(1,h);
+  const x=c.getContext('2d'); x.imageSmoothingEnabled=true; x.imageSmoothingQuality='high'; x.drawImage(src,0,0,c.width,c.height); return c;
+}
+/** Thumbnails are 480 px on the long side: sharp in galleries on high-resolution screens. */
+function makeThumb(dataUrl,max=480,q=.82){return loadImg(dataUrl).then(img=>{const k=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+  return resample(img,Math.round(img.naturalWidth*k),Math.round(img.naturalHeight*k)).toDataURL('image/jpeg',q);});}
+/** The full photo if it's here; otherwise ask for it and use the thumbnail meanwhile. */
+function bestUrl(m){const id=blobId(m); if(id&&BLOB[id]) return BLOB[id]; if(id) needBlob(id); return thumbUrl(m);}
 function murl(m){const id=blobId(m); if(!id) return m?m.url:''; if(BLOB[id]) return BLOB[id]; needBlob(id); return PIXEL;}
 let _blobTimer=null;
 function needBlob(id){ if(BLOB_WAIT.has(id)) return; BLOB_WAIT.add(id); clearTimeout(_blobTimer); _blobTimer=setTimeout(loadBlobs,30); }
@@ -112,7 +131,7 @@ async function migrateInline(){
   for(const col of ['persons','places','sources']) for(const o of Object.values(ALL[col])){
     if(!(o.media||[]).some(m=>typeof m.url==='string'&&m.url.startsWith('data:'))) continue;
     const map={};
-    for(const m of o.media) if(typeof m.url==='string'&&m.url.startsWith('data:')){ try{const full=m.url; m.url='kl:'+await storeBlob(full); map[full]=m.url; if(isImg(m)) m.thumb='kl:'+await storeBlob(await makeThumb(full)); delete m.local; n++;}catch(e){return false;} }
+    for(const m of o.media) if(typeof m.url==='string'&&m.url.startsWith('data:')){ try{const full=m.url; m.url='kl:'+await storeBlob(full); map[full]=m.url; if(isImg(m)){ m.thumb='kl:'+await storeBlob(await makeThumb(full)); m.tv=2; } delete m.local; n++;}catch(e){return false;} }
     for(const m of o.media) if(m.forImg&&map[m.forImg]) m.forImg=map[m.forImg]; }
   if(n){ Store.saveNow(); }
   return n>0;
@@ -125,9 +144,21 @@ async function backfillThumbs(){
     const q=clone(o); let ch=false;
     for(const m of q.media){ if(!(isImg(m)&&blobId(m)&&!m.thumb)) continue;
       const full=BLOB[blobId(m)]||await IDB.get(blobId(m)).catch(()=>null); if(!full) continue;
-      try{ m.thumb='kl:'+await storeBlob(await makeThumb(full)); ch=true; n++; }catch(e){} }
+      try{ m.thumb='kl:'+await storeBlob(await makeThumb(full)); m.tv=2; ch=true; n++; }catch(e){} }
     if(ch) ALL[col][id]=q; }
   if(n){ applyView(); Store.saveNow(); Share.updateStatus(); renderAll(); }
+  n+=await sharpenOldThumbs();
+  return n;
+}
+async function sharpenOldThumbs(){
+  let n=0;
+  for(const col of ['persons','places','sources']) for(const o of Object.values(ALL[col])) for(const m of o.media||[]){
+    if(!isImg(m)||m.tv||!m.thumb||!blobId(m)||BLOB[T2(m)]) continue;
+    let t=await IDB.get(T2(m)).catch(()=>null);
+    if(!t){ const full=BLOB[blobId(m)]||await IDB.get(blobId(m)).catch(()=>null); if(!full) continue;
+      try{ t=await makeThumb(full); await IDB.put(T2(m),t); }catch(e){ continue; } }
+    BLOB[T2(m)]=t; n++; }
+  if(n){ ui.treeKey=null; renderAll(); }
   return n;
 }
 /** All image ids referenced by the archive. */
@@ -172,4 +203,4 @@ function ensurePlace(name){
 function ageAt(p){const b=yearOf(p.birthDate),d=yearOf(p.deathDate); if(b&&d) return d-b; return null;}
 function personLabel(p){const ls=lifespan(p); return fullName(p)+(ls?' ('+ls.replace(/\s/g,'')+')':'');}
 
-export { NAME_TYPES, formerNamesText, allNames, sharedIndex, P, givenName, shortName, fullName, givenHtml, fullHtml, initials, lifespan, sexColor, placeName, children, partners, siblings, isImg, isAudio, avatarMedia, cropPct, avImg, BLOB, BLOB_WAIT, IDB, PIXEL, blobId, thumbUrl, makeThumb, murl, _blobTimer, needBlob, loadBlobs, blobUrl, storeBlob, migrateInline, backfillThumbs, blobRefs, avatarUrl, homePerson, goHome, setHome, ancestorsOf, descendantsOf, scopeSet, lifeEvents, ensurePlace, ageAt, personLabel };
+export { sharpenOldThumbs, resample, bestUrl, NAME_TYPES, formerNamesText, allNames, sharedIndex, P, givenName, shortName, fullName, givenHtml, fullHtml, initials, lifespan, sexColor, placeName, children, partners, siblings, isImg, isAudio, avatarMedia, cropPct, avImg, BLOB, BLOB_WAIT, IDB, PIXEL, blobId, thumbUrl, makeThumb, murl, _blobTimer, needBlob, loadBlobs, blobUrl, storeBlob, migrateInline, backfillThumbs, blobRefs, avatarUrl, homePerson, goHome, setHome, ancestorsOf, descendantsOf, scopeSet, lifeEvents, ensurePlace, ageAt, personLabel };

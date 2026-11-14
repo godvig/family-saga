@@ -1,24 +1,24 @@
 /* Släktsagan · media.js — Photos and documents: upload, drag and drop, thumbnails, face framing, lightbox. */
-import { BLOB, P, avatarMedia, blobId, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=52';
-import { confirmBox, modal } from './modal.js?v=52';
-import { E, audioDuration, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=52';
-import { bindLogs } from './research.js?v=52';
-import { renderAll, select } from './router.js?v=52';
-import { ALL, S, ui } from './state.js?v=52';
-import { Hist, Store } from './store.js?v=52';
-import { $, clone, esc, genitive, toast } from './util.js?v=52';
+import { BLOB, P, avatarMedia, blobId, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=55';
+import { confirmBox, modal } from './modal.js?v=55';
+import { E, audioDuration, isPhotoFile, photoAccept, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=55';
+import { bindLogs } from './research.js?v=55';
+import { renderAll, select } from './router.js?v=55';
+import { ALL, S, ui } from './state.js?v=55';
+import { Hist, Store } from './store.js?v=55';
+import { $, clone, esc, genitive, toast } from './util.js?v=55';
 
 /* ============ Photos straight onto a person ============
    Click the empty photo on a card (on a phone: take a picture or pick one), drop image
    files on a card or the person panel, or paste an image while a person is selected. */
 function pickImageFor(pid){
   // created and clicked inside the click handler itself, so phones allow it and offer the camera
-  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
+  const inp=document.createElement('input'); inp.type='file'; inp.accept=photoAccept();
   inp.onchange=()=>{ if(inp.files&&inp.files.length) photoTo(pid,inp.files); };
   inp.click();
 }
 async function photoTo(pid,files){
-  const imgs=[...files].filter(f=>/^image\//.test(f.type)); const p=P(pid);
+  const imgs=[...files].filter(isPhotoFile); const p=P(pid);
   if(!p||!Store.canEdit) return;
   if(!imgs.length){toast('Det där var ingen bild. Släpp en bildfil (jpg, png, heic…).'); return;}
   select('person',pid); const had=!!avatarUrl(p);
@@ -33,7 +33,7 @@ async function uploadMedia(files,{profile}={}){
   for(const file of files){
     try{
       if(E.assets){const r=await E.assets.upload(file); added.push({assetId:r.id,url:r.url,name:file.name,contentType:r.contentType||file.type,caption:''});}
-      else{ if(!/^image\//.test(file.type)) throw new Error('bara bilder kan sparas här'); const url=await shrinkImage(file,1100,.82); const id=await storeBlob(url); const tid=await storeBlob(await makeThumb(url)); added.push({url:'kl:'+id,thumb:'kl:'+tid,name:file.name,contentType:'image/jpeg',caption:''}); }
+      else{ if(!isPhotoFile(file)) throw new Error('bara bilder kan sparas här'); const url=await shrinkImage(file); const id=await storeBlob(url); const tid=await storeBlob(await makeThumb(url)); added.push({url:'kl:'+id,thumb:'kl:'+tid,tv:2,name:file.name,contentType:'image/jpeg',caption:''}); }
     }catch(e){toast('Kunde inte ladda upp '+file.name+(e&&e.message?': '+e.message:''));}
     i++; const bar=prog&&prog.querySelector('i'); if(bar) bar.style.width=(100*i/files.length)+'%';
   }
@@ -133,7 +133,7 @@ function openLightbox(o,i){
         ${many?'<button class="lb-nav next" aria-label="Nästa">›</button>':''}</div>
       ${!E.canEdit&&m.caption?`<p class="lb-capt">${esc(m.caption)}</p>`:''}
       ${forThis?`<div class="lb-voices vms">${voiceRows(o,{forImg:m.url})}</div>`:''}
-      ${E.canEdit?`<div class="cap"><input class="t" id="lbCap" style="width:320px;max-width:60vw" placeholder="Bildtext, t.ex. 'Konfirmation 1902'" value="${esc(m.caption||'')}"><button class="btn" id="lbSave">Spara text</button>${img&&ui.sel&&ui.sel.type==='person'&&!m.profile?'<button class="btn" id="lbProf">Använd som profilbild</button>':''}${img&&ui.sel&&ui.sel.type==='person'?'<button class="btn" id="lbRec">🎙 Berätta om bilden</button>':''}<button class="btn danger" id="lbDel">Ta bort</button></div>`:''}
+      ${E.canEdit?`<div class="cap"><input class="t" id="lbCap" style="width:320px;max-width:60vw" placeholder="Bildtext, t.ex. 'Konfirmation 1902'" value="${esc(m.caption||'')}"><button class="btn" id="lbSave">Spara text</button>${img&&ui.sel&&ui.sel.type==='person'&&!m.profile?'<button class="btn" id="lbProf">Använd som profilbild</button>':''}${img&&ui.sel&&ui.sel.type==='person'?'<button class="btn" id="lbRec">🎙 Berätta om bilden</button>':''}${img&&!E.assets?'<button class="btn" id="lbSwap" title="Ersätt med en skarpare kopia – bildtext och röstminnen följer med">Byt fil</button>':''}<button class="btn danger" id="lbDel">Ta bort</button></div>`:''}
       ${many?`<div class="lb-strip">${list.map(([x],n)=>`<button class="lb-th${n===k?' on':''}" data-k="${n}" aria-label="Bild ${n+1}">${/^image\//.test(x.contentType||'')?`<img src="${esc(thumbUrl(x))}" alt="" loading="lazy">`:'📄'}</button>`).join('')}</div>`:''}`;
     lb.querySelector('#lbClose').onclick=close;
     // The thumbnail shows at once (scaled up); the full photo replaces it as soon as it has loaded.
@@ -145,6 +145,13 @@ function openLightbox(o,i){
     // Load the neighbours so stepping feels instant.
     for(const d of [1,-1]){ const n=list[(k+d+list.length)%list.length][0]; if(/^image\//.test(n.contentType||'')){const im=new Image(); im.src=murl(n);} }
     if(E.canEdit){
+      const sw=lb.querySelector('#lbSwap'); if(sw) sw.onclick=()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept=photoAccept();
+        inp.onchange=async()=>{ const file=inp.files&&inp.files[0]; if(!file) return; try{
+          const url=await shrinkImage(file), id=await storeBlob(url), tid=await storeBlob(await makeThumb(url)), c=clone(currentSelObj()), old=c.media[idx].url;
+          Object.assign(c.media[idx],{url:'kl:'+id,thumb:'kl:'+tid,tv:2,name:file.name,contentType:'image/jpeg'});
+          for(const x of c.media) if(x.forImg===old) x.forImg='kl:'+id;
+          Hist.label('Bytt bildfil'); await Store.put(c); o=c; list[k][0]=c.media[idx]; show(); toast('Bilden är utbytt. Bildtext och röstminnen följde med.');
+        }catch(e){ toast('Kunde inte byta bilden: '+(e.message||e)); } }; inp.click(); };
       const rb=lb.querySelector('#lbRec'); if(rb) rb.onclick=()=>{close(); recordModal(currentSelObj(),{forImg:m.url});};
       lb.querySelector('#lbSave').onclick=()=>{const c=clone(currentSelObj()); c.media[idx].caption=lb.querySelector('#lbCap').value; Store.put(c); o=c; list[k][0]=c.media[idx]; toast('Bildtexten är sparad');};
       const pb=lb.querySelector('#lbProf'); if(pb) pb.onclick=()=>{const c=clone(currentSelObj()); c.media.forEach((x,j)=>{if(j===idx) x.profile=true; else delete x.profile;}); Store.put(c); close(); toast('Profilbilden är bytt');};
