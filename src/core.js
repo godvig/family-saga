@@ -412,6 +412,149 @@
     return b64u(new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode('klansagan-write'))));
   }
 
+  /** Hex SHA-256, the form the server stores a write secret in. @param {string} s */
+  async function sha256hex(s) {
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)));
+    return Array.from(h, b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Short public tag for a key. Photos are stored under "<tag>_<id>", so a photo encrypted
+   * with one key never collides with the same photo encrypted with another.
+   * @param {string} key
+   */
+  async function keyTag(key) { return (await sha256hex('tag:' + key)).slice(0, 8); }
+
+  /* ------------------------------------------------ Read-only links and living people */
+
+  /**
+   * Is this person probably alive? Used to decide what readers of a read-only link may see.
+   * Errs on the side of "alive": no death date, no death place, not marked deceased, and
+   * either born less than 105 years ago or with no birth year to go on. Without a birth year
+   * we estimate one from parents (+20) and children (−15); someone whose child was born
+   * 120 years ago is not alive.
+   * @param {any} p @param {Record<string,any>} persons @param {number} nowYear
+   */
+  function isLiving(p, persons, nowYear) {
+    if (!p || p.deceased || p.deathDate || p.deathPlace) return false;
+    if ((p.events || []).some((/** @type {any} */ e) => e.type === 'Död' || e.type === 'Begravning')) return false;
+    let by = yearOf(p.birthDate);
+    if (!by) {
+      const all = Object.values(persons || {});
+      const ests = /** @type {number[]} */ ([]);
+      for (const k of ['fatherId', 'motherId']) { const q = persons[p[k]]; const y = q && yearOf(q.birthDate); if (y) ests.push(y + 20); }
+      for (const c of all) if (c.fatherId === p.id || c.motherId === p.id) { const y = yearOf(c.birthDate); if (y) ests.push(y - 15); }
+      if (ests.length) by = Math.min(...ests);
+    }
+    return !by || nowYear - by < 105;
+  }
+
+  /** The few fields a reader may see about a living person: name, birth year, family links. */
+  function redactLiving(/** @type {any} */ p) {
+    const y = yearOf(p.birthDate);
+    /** @type {any} */ const r = { kind: 'person', id: p.id, given: p.given || '', surname: p.surname || '', sex: p.sex || '',
+      birthDate: y ? String(y) : '', fatherId: p.fatherId || '', motherId: p.motherId || '', spouseIds: (p.spouseIds || []).slice(), living: true };
+    if (p.callName) r.callName = p.callName;
+    if (p.home) r.home = true;
+    if (p.createdAt) r.createdAt = p.createdAt;
+    return r;
+  }
+
+  /**
+   * Split an archive into what readers may see and what only editors may see.
+   * pub: everyone; living people reduced to name and birth year, no comments, and only
+   * places and sources that someone not living refers to. priv: the full documents for
+   * living people, the places and sources only they refer to, and all comments.
+   * @param {any} data @param {number} nowYear
+   */
+  function splitForReaders(data, nowYear) {
+    const persons = data.persons || {};
+    /** @type {any} */ const pub = { persons: {}, places: {}, sources: {}, views: { ...(data.views || {}) } };
+    /** @type {any} */ const priv = { persons: {}, places: {}, sources: {}, comments: { ...(data.comments || {}) } };
+    const usedPl = new Set(), usedSrc = new Set();
+    for (const p of Object.values(persons)) {
+      if (isLiving(p, persons, nowYear)) { priv.persons[p.id] = p; pub.persons[p.id] = redactLiving(p); continue; }
+      pub.persons[p.id] = p;
+      for (const id of [p.birthPlace, p.deathPlace, ...(p.events || []).map((/** @type {any} */ e) => e.placeId)]) if (id) usedPl.add(id);
+      for (const c of p.citations || []) if (c.sourceId) usedSrc.add(c.sourceId);
+    }
+    for (const [col, used] of /** @type {[string, Set<string>][]} */ ([['places', usedPl], ['sources', usedSrc]]))
+      for (const [id, o] of Object.entries(data[col] || {})) (used.has(id) ? pub : priv)[col][id] = o;
+    return { pub, priv };
+  }
+
+  /* ------------------------------------------------ What's new since your last visit */
+
+  /** Swedish names for person fields, for "Karl: födelsedatum, bilder". */
+  const FIELD_SV = /** @type {Record<string,string>} */ ({ given: 'namn', surname: 'namn', callName: 'namn', birthDate: 'födelse', birthPlace: 'födelse',
+    deathDate: 'död', deathPlace: 'död', deceased: 'död', occupation: 'yrke', notes: 'anteckningar', story: 'berättelse', media: 'bilder och ljud',
+    events: 'händelser', citations: 'källor', fatherId: 'föräldrar', motherId: 'föräldrar', spouseIds: 'partner', sex: 'kön', home: '' });
+  const IGNORE = new Set(['updatedAt', 'updatedBy', 'createdAt', 'kind', 'id']);
+
+  /**
+   * What someone else changed between the version you last had (as hashes) and the one
+   * you just fetched. Only people and comments are reported; places and sources follow people.
+   * @param {Record<string, Record<string,string>>} baseHashes  hashArchive of the version you had
+   * @param {any} before  your copy before fetching (for the names of removed people and old field values)
+   * @param {any} after   the fetched version
+   * @param {string} me   your name, so your own comments aren't news
+   */
+  function diffNews(baseHashes, before, after, me) {
+    const bp = (baseHashes && baseHashes.persons) || {}, ap = (after && after.persons) || {}, old = (before && before.persons) || {};
+    /** @type {{added:string[], changed:Record<string,string[]>, removed:string[], comments:string[]}} */
+    const d = { added: [], changed: {}, removed: [], comments: [] };
+    for (const [id, p] of Object.entries(ap)) {
+      if (!(id in bp)) { d.added.push(id); continue; }
+      if (bp[id] === docHash(p)) continue;
+      const o = old[id] || {}, f = new Set();
+      for (const k of new Set([...Object.keys(o), ...Object.keys(p)])) {
+        if (IGNORE.has(k) || JSON.stringify(o[k] ?? null) === JSON.stringify(p[k] ?? null)) continue;
+        const l = k in FIELD_SV ? FIELD_SV[k] : 'övrigt'; if (l) f.add(l);
+      }
+      d.changed[id] = [...f];
+    }
+    for (const id of Object.keys(bp)) if (!(id in ap)) { const o = old[id]; d.removed.push(o ? [o.given, o.surname].filter(Boolean).join(' ') || 'Namnlös' : 'Någon'); }
+    const bc = (baseHashes && baseHashes.comments) || {};
+    for (const [id, c] of Object.entries((after && after.comments) || {})) if (!(id in bc) && c.by !== me) d.comments.push(id);
+    return d;
+  }
+
+  /**
+   * Add one fetch's changes to what's waiting to be seen. Someone added and then changed
+   * stays "added"; someone added and then removed disappears from the list.
+   * @param {any} news  {since, by[], added{}, changed{}, removed[], comments[]} or null
+   * @param {ReturnType<typeof diffNews>} d @param {string[]} by @param {string} at
+   */
+  function addNews(news, d, by, at) {
+    const n = news ? JSON.parse(JSON.stringify(news)) : { since: at, by: [], added: {}, changed: {}, removed: [], comments: [] };
+    const empty = !d.added.length && !Object.keys(d.changed).length && !d.removed.length && !d.comments.length;
+    if (empty) return news || null;
+    for (const b of by) if (b && !n.by.includes(b)) n.by.push(b);
+    for (const id of d.added) { n.added[id] = 1; delete n.changed[id]; }
+    for (const [id, f] of Object.entries(d.changed)) { if (n.added[id]) continue; n.changed[id] = [...new Set([...(n.changed[id] || []), ...f])]; }
+    for (const name of d.removed) n.removed.push(name);
+    n.removed = n.removed.slice(-50);
+    for (const id of d.comments) if (!n.comments.includes(id)) n.comments.push(id);
+    n.at = at;
+    return n;
+  }
+
+  /** Drop people from the news who no longer exist. @param {any} news @param {any} data */
+  function pruneNews(news, data) {
+    if (!news) return null;
+    const ps = (data && data.persons) || {}, cs = (data && data.comments) || {};
+    for (const k of ['added', 'changed']) for (const id of Object.keys(news[k])) if (!ps[id]) delete news[k][id];
+    news.comments = news.comments.filter((/** @type {string} */ id) => cs[id]);
+    return news;
+  }
+
+  /** Put the editors' part back on top of the readers' part. @param {any} pub @param {any} priv */
+  function joinPrivate(pub, priv) {
+    /** @type {any} */ const out = {};
+    for (const c of COLS) out[c] = { ...((pub && pub[c]) || {}), ...((priv && priv[c]) || {}) };
+    return out;
+  }
+
   /* --------------------------------------------------------------- On this day */
 
   /**
@@ -438,7 +581,7 @@
     const out = /** @type {any[]} */ ([]); const seen = new Set();
     for (const p of Object.values(persons)) {
       const b = exact(p.birthDate), dd = exact(p.deathDate);
-      const living = !p.deathDate && !!b && today.getFullYear() - b.y < 105;
+      const living = !p.deathDate && !p.deceased && !!b && today.getFullYear() - b.y < 105;
       const add = (/** @type {any} */ x, /** @type {string} */ kind, /** @type {any} */ extra = {}) => { if (!x) return; const { n, y } = next(x); if (n <= days && y > x.y) out.push({ kind, personId: p.id, year: x.y, years: y - x.y, inDays: n, living, ...extra }); };
       add(b, 'birth'); add(dd, 'death');
       for (const e of p.events || []) if (e.type === 'Vigsel') {
@@ -760,7 +903,7 @@
     };
   }
 
-  const api = { onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret };
+  const api = { onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret, sha256hex, keyTag, isLiving, redactLiving, splitForReaders, joinPrivate, diffNews, addNews, pruneNews };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   // @ts-ignore — browser global
   root.KinCore = api;

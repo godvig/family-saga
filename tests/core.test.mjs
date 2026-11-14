@@ -337,3 +337,69 @@ describe('onThisDay', () => {
     expect(core.onThisDay(ps, new Date(2027, 1, 28), { days: 0 }).map((x) => x.personId)).toEqual(['d']);
   });
 });
+
+describe('read-only links: living people', () => {
+  const persons = {
+    old: { id: 'old', given: 'Anna', birthDate: '1890-02-01' },
+    dead: { id: 'dead', given: 'Per', birthDate: '1950-01-01', deathDate: '2010-05-05', deathPlace: 'pl_d', citations: [{ id: 'c1', sourceId: 's_pub' }] },
+    kid: { id: 'kid', given: 'Lisa', surname: 'Ek', birthDate: '1985-11-19', birthPlace: 'pl_home', notes: 'Bor på Storgatan', fatherId: 'dead',
+      media: [{ url: 'kl:photo123' }], citations: [{ id: 'c2', sourceId: 's_priv' }] },
+    nodate: { id: 'nodate', given: 'Okänd' },
+    gran: { id: 'gran', given: 'Gamla' },
+    gkid: { id: 'gkid', motherId: 'gran', birthDate: '1880' },
+    marked: { id: 'marked', given: 'Olle', birthDate: '1960', deceased: true },
+  };
+  const data = { persons, places: { pl_d: { id: 'pl_d', name: 'Dödsort' }, pl_home: { id: 'pl_home', name: 'Hemort' } },
+    sources: { s_pub: { id: 's_pub' }, s_priv: { id: 's_priv' } }, views: {}, comments: { cm: { id: 'cm', personId: 'dead', text: 'Moster vet' } } };
+
+  it('decides who is living', () => {
+    expect(core.isLiving(persons.old, persons, 2026)).toBe(false);
+    expect(core.isLiving(persons.dead, persons, 2026)).toBe(false);
+    expect(core.isLiving(persons.kid, persons, 2026)).toBe(true);
+    expect(core.isLiving(persons.nodate, persons, 2026)).toBe(true);
+    expect(core.isLiving(persons.gran, persons, 2026)).toBe(false); // child born 1880
+    expect(core.isLiving(persons.marked, persons, 2026)).toBe(false);
+  });
+
+  it('gives readers only name and birth year of the living, and no comments', () => {
+    const { pub, priv } = core.splitForReaders(data, 2026);
+    expect(pub.persons.kid).toEqual({ kind: 'person', id: 'kid', given: 'Lisa', surname: 'Ek', sex: '', birthDate: '1985', fatherId: 'dead', motherId: '', spouseIds: [], living: true });
+    expect(JSON.stringify(pub)).not.toMatch(/Storgatan|1985-11-19|photo123|Hemort|s_priv|Moster/);
+    expect(pub.persons.dead).toEqual(persons.dead);
+    expect(Object.keys(pub.places)).toEqual(['pl_d']);
+    expect(Object.keys(pub.sources)).toEqual(['s_pub']);
+    expect(pub.comments).toBeUndefined();
+    expect(priv.persons.kid).toEqual(persons.kid);
+    expect(priv.comments.cm.text).toBe('Moster vet');
+    expect(core.joinPrivate(pub, priv)).toEqual({ ...data, views: {} });
+  });
+
+  it('tags keys so photos under different keys never collide', async () => {
+    const a = await core.keyTag(core.newKey()), b = await core.keyTag(core.newKey());
+    expect(a).toMatch(/^[0-9a-f]{8}$/); expect(a).not.toBe(b);
+    expect(await core.sha256hex('x')).toBe('2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881');
+  });
+});
+
+describe("what's new since your last visit", () => {
+  const before = { persons: { a: { id: 'a', given: 'Karl', birthDate: '1900' }, b: { id: 'b', given: 'Berit' } }, comments: {} };
+  const base = core.hashArchive(before);
+  const after = { persons: { a: { id: 'a', given: 'Karl', birthDate: '1901', media: [{ url: 'kl:x' }], updatedAt: 'z' }, c: { id: 'c', given: 'Cecilia' } },
+    comments: { c1: { id: 'c1', by: 'Lisa', text: 'Hej' }, c2: { id: 'c2', by: 'Adam', text: 'Mitt' } } };
+
+  it('lists who was added, changed (and how) and removed, and others\' comments', () => {
+    const d = core.diffNews(base, before, after, 'Adam');
+    expect(d).toEqual({ added: ['c'], changed: { a: ['födelse', 'bilder och ljud'] }, removed: ['Berit'], comments: ['c1'] });
+  });
+
+  it('accumulates over several fetches', () => {
+    let n = core.addNews(null, core.diffNews(base, before, after, 'Adam'), ['Lisa'], '2026-11-14');
+    n = core.addNews(n, { added: [], changed: { c: ['yrke'], a: ['död'] }, removed: [], comments: [] }, ['Per'], '2026-11-15');
+    expect(n.by).toEqual(['Lisa', 'Per']);
+    expect(n.added).toEqual({ c: 1 });
+    expect(n.changed.a).toEqual(['födelse', 'bilder och ljud', 'död']);
+    expect(n.since).toBe('2026-11-14');
+    expect(core.addNews(n, { added: [], changed: {}, removed: [], comments: [] }, ['X'], 'y')).toBe(n);
+    expect(core.pruneNews(n, { persons: { a: {} }, comments: {} }).added).toEqual({});
+  });
+});
