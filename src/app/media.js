@@ -1,12 +1,12 @@
 /* Släktsagan · media.js — Photos and documents: upload, drag and drop, thumbnails, face framing, lightbox. */
-import { P, avatarMedia, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=50';
-import { confirmBox, modal } from './modal.js?v=50';
-import { E, audioDuration, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=50';
-import { bindLogs } from './research.js?v=50';
-import { renderAll, select } from './router.js?v=50';
-import { ALL, S, ui } from './state.js?v=50';
-import { Hist, Store } from './store.js?v=50';
-import { $, clone, esc, genitive, toast } from './util.js?v=50';
+import { BLOB, P, avatarMedia, blobId, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=52';
+import { confirmBox, modal } from './modal.js?v=52';
+import { E, audioDuration, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=52';
+import { bindLogs } from './research.js?v=52';
+import { renderAll, select } from './router.js?v=52';
+import { ALL, S, ui } from './state.js?v=52';
+import { Hist, Store } from './store.js?v=52';
+import { $, clone, esc, genitive, toast } from './util.js?v=52';
 
 /* ============ Photos straight onto a person ============
    Click the empty photo on a card (on a phone: take a picture or pick one), drop image
@@ -129,13 +129,15 @@ function openLightbox(o,i){
     const forThis=img&&(o.media||[]).some(x=>isAudio(x)&&x.forImg===m.url);
     lb.innerHTML=`<div class="lb-top"><span class="lb-count">${many?`${k+1} / ${list.length}`:''}</span><button class="lb-x" id="lbClose" aria-label="Stäng">✕</button></div>
       <div class="lb-stage">${many?'<button class="lb-nav prev" aria-label="Föregående">‹</button>':''}
-        ${img?`<img src="${esc(murl(m))}" alt="${esc(m.caption||'')}">`:`<div class="lb-doc"><div style="font-size:48px">📄</div><p>${esc(m.name||'Dokument')}</p><a class="btn" href="${esc(murl(m))}" target="_blank" rel="noopener" style="color:var(--ink)">Öppna dokumentet</a></div>`}
+        ${img?`<img class="lb-img" src="${esc(BLOB[blobId(m)]||thumbUrl(m))}" alt="${esc(m.caption||'')}">`:`<div class="lb-doc"><div style="font-size:48px">📄</div><p>${esc(m.name||'Dokument')}</p><a class="btn" href="${esc(murl(m))}" target="_blank" rel="noopener" style="color:var(--ink)">Öppna dokumentet</a></div>`}
         ${many?'<button class="lb-nav next" aria-label="Nästa">›</button>':''}</div>
       ${!E.canEdit&&m.caption?`<p class="lb-capt">${esc(m.caption)}</p>`:''}
       ${forThis?`<div class="lb-voices vms">${voiceRows(o,{forImg:m.url})}</div>`:''}
       ${E.canEdit?`<div class="cap"><input class="t" id="lbCap" style="width:320px;max-width:60vw" placeholder="Bildtext, t.ex. 'Konfirmation 1902'" value="${esc(m.caption||'')}"><button class="btn" id="lbSave">Spara text</button>${img&&ui.sel&&ui.sel.type==='person'&&!m.profile?'<button class="btn" id="lbProf">Använd som profilbild</button>':''}${img&&ui.sel&&ui.sel.type==='person'?'<button class="btn" id="lbRec">🎙 Berätta om bilden</button>':''}<button class="btn danger" id="lbDel">Ta bort</button></div>`:''}
       ${many?`<div class="lb-strip">${list.map(([x],n)=>`<button class="lb-th${n===k?' on':''}" data-k="${n}" aria-label="Bild ${n+1}">${/^image\//.test(x.contentType||'')?`<img src="${esc(thumbUrl(x))}" alt="" loading="lazy">`:'📄'}</button>`).join('')}</div>`:''}`;
     lb.querySelector('#lbClose').onclick=close;
+    // The thumbnail shows at once (scaled up); the full photo replaces it as soon as it has loaded.
+    if(img&&!BLOB[blobId(m)]){ const want=k; blobUrl(m).then(u=>{ const el=lb.querySelector('.lb-img'); if(el&&k===want&&u) el.src=u; }); }
     const pv=lb.querySelector('.lb-nav.prev'), nx=lb.querySelector('.lb-nav.next'); if(pv) pv.onclick=()=>step(-1); if(nx) nx.onclick=()=>step(1);
     lb.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{k=+b.dataset.k; show();});
     {const on=lb.querySelector('.lb-th.on'); if(on&&on.scrollIntoView) on.scrollIntoView({block:'nearest',inline:'center'});}

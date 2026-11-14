@@ -1,10 +1,10 @@
 /* Släktsagan · domain.js — Family logic on top of the store: names, places, relatives, ancestors, blobs and thumbnails. */
-import { loadImg } from './media.js?v=50';
-import { renderAll, select, setFocus } from './router.js?v=50';
-import { Share } from './share.js?v=50';
-import { ALL, S, applyView, bumpRev, ui } from './state.js?v=50';
-import { Store } from './store.js?v=50';
-import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=50';
+import { loadImg } from './media.js?v=52';
+import { renderAll, select, setFocus } from './router.js?v=52';
+import { Share } from './share.js?v=52';
+import { ALL, S, applyView, bumpRev, ui } from './state.js?v=52';
+import { Store } from './store.js?v=52';
+import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=52';
 
 /* ============ Domain helpers ============ */
 const P=id=>S.persons[id];
@@ -12,11 +12,31 @@ const P=id=>S.persons[id];
 const givenName=p=>ui.nameMode==='call'?(p.callName||(p.given||'').trim().split(/\s+/)[0]||''):(p.given||'');
 const shortName=p=>p?(p.callName||p.given||fullName(p)):'Okänd';
 const fullName=p=>p?([givenName(p),p.surname].filter(Boolean).join(' ')||'Namnlös'):'Okänd';
+/** Kinds of former name, as in GEDCOM's NAME TYPE. */
+const NAME_TYPES={birth:'Födelsenamn',married:'Namn i tidigare gifte',aka:'Annat tidigare namn'};
+/**
+ * Former names in the Swedish way: "f. Sjöberg" for a birth surname, otherwise "tidigare Lisbeth",
+ * "tidigare Lena Sjöberg". Empty when there are none.
+ */
+function formerNamesText(p){
+  const out=[]; for(const n of (p&&p.formerNames)||[]){
+    const nm=[n.given,n.surname].filter(Boolean).join(' '); if(!nm) continue;
+    out.push(n.type==='birth'&&!n.given?'f. '+n.surname:(n.type==='birth'?'f. ':'tidigare ')+nm);
+  }
+  return out.join(', ');
+}
+/** Every name someone has gone by, for search and duplicate checks. */
+const allNames=p=>[fullName(p),...((p&&p.formerNames)||[]).map(n=>[n.given||p.given,n.surname||p.surname].filter(Boolean).join(' '))].join(' ');
 /** Given names with the call name underlined, Swedish style. */
 const givenHtml=p=>{const g=p.given||''; if(!p.callName) return esc(g); const ws=g.split(/\s+/); const i=ws.findIndex(w=>w.replace(/[()]/g,'')===p.callName);
   return i<0?esc(g)+` <span class="muted">(${esc(p.callName)})</span>`:ws.map((w,j)=>j===i?`<u class="tn" title="Tilltalsnamn">${esc(w)}</u>`:esc(w)).join(' ');};
 const fullHtml=p=>ui.nameMode==='call'?esc(fullName(p)):([givenHtml(p),esc(p.surname||'')].filter(Boolean).join(' ')||'Namnlös');
-const initials=p=>{const w=[p.given,p.surname].filter(Boolean).join(' ').split(/\s+/).filter(x=>/^[A-ZÅÄÖÉŁ]/i.test(x)&&!/^(av|von|de)$/i.test(x)); return ((w[0]||'?')[0]+(w.length>1&&!/^[IVX]+$/.test(w[1])?w[1][0]:'')).toUpperCase();};
+/** Two letters for a card without a photo: the name they went by (tilltalsnamn) and the surname. */
+const initials=p=>{const ok=x=>x&&/^[A-ZÅÄÖÉŁ]/i.test(x)&&!/^(av|von|de|af|van)$/i.test(x);
+  const gs=String(p.given||'').split(/\s+/).filter(ok), ss=String(p.surname||'').split(/\s+/).filter(ok);
+  const first=(p.callName&&ok(p.callName)?p.callName:gs[0])||ss[0]||'?';
+  const second=ss.length?(first===ss[0]?ss[1]:ss[0]):gs.find(w=>w!==first&&!/^[IVX]+$/.test(w));
+  return (first[0]+(second?second[0]:'')).toUpperCase();};
 function lifespan(p){const b=yearOf(p.birthDate),d=yearOf(p.deathDate); if(!b&&!d) return p.deceased?'†':''; return (b||'?')+' – '+(d||(p.deceased?'?':b&&NOW_Y-b<105?'':'?'));}
 const sexColor=p=>p&&p.sex==='M'?'var(--male)':p&&p.sex==='K'?'var(--female)':'var(--unk)';
 const placeName=id=>id&&S.places[id]?S.places[id].name:'';
@@ -124,10 +144,21 @@ function scopeSet(scope){
   const s=scope==='anor'?ancestorsOf(f):descendantsOf(f); s.add(f); return s;
 }
 /** All dated facts for a person (birth, death, events) */
-function lifeEvents(p){
+/* Events that name a second person ("Vigsel med Anette") are stored once, with the person they
+   were entered on, and shown for both. sharedIndex maps the second person to [owner, event]. */
+let _shOf=null,_sh=new Map();
+function sharedIndex(){
+  if(_shOf===S.persons) return _sh;
+  const m=new Map(); for(const o of Object.values(S.persons)) for(const e of o.events||[]) if(e.withId&&e.withId!==o.id){ const a=m.get(e.withId)||[]; a.push([o,e]); m.set(e.withId,a); }
+  _shOf=S.persons; _sh=m; return m;
+}
+/** A person's life as events. opts.own: only their own events (for counts where a shared one would count twice). */
+function lifeEvents(p,opts={}){
   const ev=[];
   if(p.birthDate||p.birthPlace) ev.push({type:'Född',date:p.birthDate,placeId:p.birthPlace,fixed:'birth'});
   for(const e of p.events||[]) ev.push(Object.assign({},e));
+  if(!opts.own){ const mine=new Set((p.events||[]).map(e=>e.type+'|'+(e.date||'')+'|'+(e.withId||'')));
+    for(const [o,e] of sharedIndex().get(p.id)||[]) if(!mine.has(e.type+'|'+(e.date||'')+'|'+o.id)) ev.push({...e,withId:o.id,ownerId:o.id}); }
   if(p.deathDate||p.deathPlace) ev.push({type:'Död',date:p.deathDate,placeId:p.deathPlace,fixed:'death'});
   return ev.sort((a,b)=>{const ka=dateKey(a.date),kb=dateKey(b.date); if(a.fixed==='birth') return -1; if(b.fixed==='birth') return 1; if(a.fixed==='death'&&kb!=null) return ka==null?1:ka-kb; return (ka??9e9)-(kb??9e9);});
 }
@@ -141,4 +172,4 @@ function ensurePlace(name){
 function ageAt(p){const b=yearOf(p.birthDate),d=yearOf(p.deathDate); if(b&&d) return d-b; return null;}
 function personLabel(p){const ls=lifespan(p); return fullName(p)+(ls?' ('+ls.replace(/\s/g,'')+')':'');}
 
-export { P, givenName, shortName, fullName, givenHtml, fullHtml, initials, lifespan, sexColor, placeName, children, partners, siblings, isImg, isAudio, avatarMedia, cropPct, avImg, BLOB, BLOB_WAIT, IDB, PIXEL, blobId, thumbUrl, makeThumb, murl, _blobTimer, needBlob, loadBlobs, blobUrl, storeBlob, migrateInline, backfillThumbs, blobRefs, avatarUrl, homePerson, goHome, setHome, ancestorsOf, descendantsOf, scopeSet, lifeEvents, ensurePlace, ageAt, personLabel };
+export { NAME_TYPES, formerNamesText, allNames, sharedIndex, P, givenName, shortName, fullName, givenHtml, fullHtml, initials, lifespan, sexColor, placeName, children, partners, siblings, isImg, isAudio, avatarMedia, cropPct, avImg, BLOB, BLOB_WAIT, IDB, PIXEL, blobId, thumbUrl, makeThumb, murl, _blobTimer, needBlob, loadBlobs, blobUrl, storeBlob, migrateInline, backfillThumbs, blobRefs, avatarUrl, homePerson, goHome, setHome, ancestorsOf, descendantsOf, scopeSet, lifeEvents, ensurePlace, ageAt, personLabel };

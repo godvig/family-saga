@@ -1,9 +1,9 @@
 /* Släktsagan · persons.js — The person list. */
-import { P, ancestorsOf, fullName, placeName, sexColor, shortName } from './domain.js?v=50';
-import { emptyState, showPerson } from './router.js?v=50';
-import { DATA_REV, S, ui } from './state.js?v=50';
-import { Store } from './store.js?v=50';
-import { $, dateKey, esc, norm, yearOf } from './util.js?v=50';
+import { P, allNames, ancestorsOf, fullName, placeName, sexColor, shortName } from './domain.js?v=52';
+import { emptyState, showPerson } from './router.js?v=52';
+import { DATA_REV, S, ui } from './state.js?v=52';
+import { Store } from './store.js?v=52';
+import { $, dateKey, esc, norm, yearOf } from './util.js?v=52';
 
 /* ============ PERSONS ============ */
 function renderPersons(fresh){
@@ -22,7 +22,7 @@ function renderPersons(fresh){
     plats:p=>!p.birthPlace,
   };
   const q=norm(ui.plQuery);
-  let list=all.filter(flt[ui.plFilter]).filter(p=>!q||norm(fullName(p)+' '+(p.occupation||'')+' '+placeName(p.birthPlace)).includes(q));
+  let list=all.filter(flt[ui.plFilter]).filter(p=>!q||norm(allNames(p)+' '+(p.occupation||'')+' '+placeName(p.birthPlace)).includes(q));
   const sorters={namn:(a,b)=>(a.surname||'').localeCompare(b.surname||'','sv')||(a.given||'').localeCompare(b.given||'','sv'),fodd:(a,b)=>(dateKey(a.birthDate)??9e9)-(dateKey(b.birthDate)??9e9),senast:(a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||'')};
   list.sort(sorters[ui.plSort]);
   const nSrc=all.filter(p=>(p.citations||[]).length).length;

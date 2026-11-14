@@ -1,14 +1,14 @@
 /* Släktsagan · card.js — The person card page. */
-import { P, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings, thumbUrl } from './domain.js?v=50';
-import { openLightbox } from './media.js?v=50';
-import { openPersonModal } from './modal.js?v=50';
-import { bindVoices, citeLinks, voiceRows } from './panel.js?v=50';
-import { personPdf } from './print.js?v=50';
-import { emptyState, setFocus } from './router.js?v=50';
-import { S, ui } from './state.js?v=50';
-import { Store } from './store.js?v=50';
-import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=50';
-import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=50';
+import { P, formerNamesText, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings, thumbUrl } from './domain.js?v=52';
+import { openLightbox } from './media.js?v=52';
+import { openPersonModal } from './modal.js?v=52';
+import { bindVoices, citeLinks, voiceRows } from './panel.js?v=52';
+import { personPdf } from './print.js?v=52';
+import { emptyState, setFocus } from './router.js?v=52';
+import { S, ui } from './state.js?v=52';
+import { Store } from './store.js?v=52';
+import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=52';
+import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=52';
 
 /* ============ PERSON CARD ============ */
 function storyOf(p){
@@ -21,6 +21,8 @@ function storyOf(p){
     if(f||m) t+=`, ${f&&m?child+' till '+fullName(f)+' och '+fullName(m):child+' till '+fullName(f||m)}`;
     out.push(t+'.');
   } else if(f||m) out.push(`${name} var ${child} till ${f&&m?fullName(f)+' och '+fullName(m):fullName(f||m)}.`);
+  for(const n of p.formerNames||[]){ const nm=[n.given||(n.surname?p.given:''),n.surname||(n.given?p.surname:'')].filter(Boolean).join(' '); if(!nm) continue;
+    out.push(n.type==='birth'?`${out.length?He:name} hette ${nm} när ${he} föddes.`:`${out.length?He:name} har tidigare hetat ${nm}.`); }
   if(p.occupation) out.push(`${out.length?He:name} var ${/^[A-ZÅÄÖ][a-zåäö]/.test(p.occupation)?p.occupation[0].toLowerCase()+p.occupation.slice(1):p.occupation}.`);
   const evs=(p.events||[]).filter(e=>e.type!=='Vigsel').sort((a,b)=>(dateKey(a.date)??9e9)-(dateKey(b.date)??9e9));
   const pl=e=>e.placeId?' i '+placeName(e.placeId):'';
@@ -57,7 +59,7 @@ function renderCard(){
   const story=storyOf(p);
   v.innerHTML=`<div class="pc">
     <div class="pc-head"><div class="pc-photo" style="box-shadow:0 0 0 2px ${sexColor(p)},var(--shadow)">${av?avImg(p):esc(initials(p))}</div>
-      <div><h1>${esc(fullName(p))}</h1><div class="life">${esc([p.birthDate?'* '+fmtDate(p.birthDate):'',p.deathDate?'† '+fmtDate(p.deathDate):''].filter(Boolean).join('   '))}${p.occupation?`<br>${esc(p.occupation)}`:''}</div>
+      <div><h1>${esc(fullName(p))}</h1>${formerNamesText(p)?`<div class="fname">${esc(formerNamesText(p))}</div>`:''}<div class="life">${esc([p.birthDate?'* '+fmtDate(p.birthDate):'',p.deathDate?'† '+fmtDate(p.deathDate):''].filter(Boolean).join('   '))}${p.occupation?`<br>${esc(p.occupation)}`:''}</div>
       <div class="acts">${Store.canEdit?'<button class="btn" data-pc="edit">Redigera</button>':''}<button class="btn" data-pc="tree">Visa i trädet</button><button class="btn" data-pc="fan">Solfjäder</button><button class="btn" data-pc="rel">Hur är vi släkt?</button><button class="btn" data-pc="pdf">⎙ Skriv ut / PDF</button></div></div></div>
     <div class="pc-grid"><div>
       ${story||Store.canEdit?`<h3>Livsberättelse</h3><p class="story">${story?esc(story):'<span class="muted">Lägg till datum, platser och händelser så skrivs en berättelse automatiskt.</span>'}</p>`:''}

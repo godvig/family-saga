@@ -1,10 +1,10 @@
 /* Släktsagan · dups.js — Duplicate finder and merging. */
-import { P, children, fullName, partners, placeName } from './domain.js?v=50';
-import { confirmBox } from './modal.js?v=50';
-import { setFocus } from './router.js?v=50';
-import { ALL, S, ui } from './state.js?v=50';
-import { Hist, Store } from './store.js?v=50';
-import { $, clone, dupScore, esc, norm, nrm, toast } from './util.js?v=50';
+import { P, children, fullName, partners, placeName } from './domain.js?v=52';
+import { confirmBox } from './modal.js?v=52';
+import { setFocus } from './router.js?v=52';
+import { ALL, S, ui } from './state.js?v=52';
+import { Hist, Store } from './store.js?v=52';
+import { $, clone, dupScore, esc, norm, nrm, toast } from './util.js?v=52';
 
 /* ============ DUPLICATES ============ */
 function findDups(){

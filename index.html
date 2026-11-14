@@ -25,11 +25,34 @@
 <link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/fraunces-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="src/styles.css?v=50">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
-<script src="src/core.js?v=50"></script>
-<script src="src/config.js?v=50"></script>
+<link rel="stylesheet" href="src/styles.css?v=52">
+<script>
+/* Start-up guard: if the app hasn't started after a while (a file that failed to load, an old
+   browser, a blocked script), say so in plain Swedish instead of leaving an empty page. */
+(function(){
+  var failed=[];
+  addEventListener('error',function(e){var t=e.target; if(t&&(t.src||t.href)) failed.push(t.src||t.href); else if(e.message) failed.push(e.message);},true);
+  addEventListener('unhandledrejection',function(e){failed.push(String(e.reason&&e.reason.message||e.reason));});
+  setTimeout(function(){
+    if(window.app) return;
+    var v=document.getElementById('view'); if(!v) return;
+    v.innerHTML='<div class="boot-fail"><h2>Sidan kunde inte starta</h2><p>Dina uppgifter är orörda. Prova först att ladda om sidan. Hjälper inte det: tryck på <b>Hämta sidan på nytt</b> – det hämtar appen igen men rör inte ditt släktarkiv.</p>'+
+      '<p><button class="btn primary" onclick="location.reload()">Ladda om</button> <button class="btn" id="bootReset">Hämta sidan på nytt</button></p>'+
+      '<details><summary>Teknisk information</summary><pre></pre></details></div>';
+    var pre=v.querySelector('pre'), show=function(){pre.textContent=[location.href.split('#')[0],navigator.userAgent].concat(failed).join('\n');}; show();
+    var m=document.querySelector('script[type=module]'); if(m) import(m.src).catch(function(e){failed.push(String(e&&e.message||e)); show();});
+    document.getElementById('bootReset').onclick=function(){
+      var jobs=[]; if('serviceWorker' in navigator) jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.unregister();}));}));
+      if(window.caches) jobs.push(caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k);}));}));
+      Promise.all(jobs).catch(function(){}).then(function(){location.replace(location.pathname+'?r='+Date.now()+location.hash);});
+    };
+  },8000);
+})();
+</script>
+<script src="vendor/d3-7.9.0.min.js"></script>
+<script src="vendor/topojson-client-3.1.0.min.js"></script>
+<script src="src/core.js?v=52"></script>
+<script src="src/config.js?v=52"></script>
 </head>
 <body>
 <header>
@@ -73,6 +96,7 @@
   <aside id="panel"></aside>
 </main>
 
-<script type="module" src="src/app/main.js?v=50"></script>
+<script nomodule>document.getElementById('view').innerHTML='<div class="boot-fail"><h2>Webbläsaren är för gammal</h2><p>Släktsagan behöver en nyare webbläsare. Uppdatera, eller öppna sidan i Chrome, Edge, Firefox eller Safari.</p></div>';</script>
+<script type="module" src="src/app/main.js?v=52"></script>
 </body>
 </html>

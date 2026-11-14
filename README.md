@@ -75,6 +75,8 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 - **Photo gallery:** the person card shows photos with their captions, the first one large, and as a swipeable strip on phones. The viewer steps through them with arrows, arrow keys, swipes and a thumbnail strip.
 - **Kinship as a chain on phones:** on a narrow screen "Hur är vi släkt?" shows the way between two people as one readable chain (*Gustav II Adolf · son till · Karl IX · son till · Gustav Vasa*), also over the tree.
 - **Research log:** per person, note what you looked for, where (a source from the archive plus page or image), when and what came of it – *found*, *partly*, *not found*, or *to look for* later. Empty searches are kept so nobody searches the same book twice, planned ones gather under *Att leta efter* on the start page, and a find can become a citation in one tick. In a shared tree the log is for editors only.
+- **Former names:** record a birth surname, a name from an earlier marriage or any earlier name (Lisbeth before she became Elisabeth). It shows as *Lena Rosengren, f. Sjöberg*, is found by search, goes into the life story and round-trips through GEDCOM as an extra `NAME` with `TYPE`.
+- **Shared events:** an event that names a second person (*Vigsel med Anette*) is stored once and shown for both, so it can't drift apart or appear twice.
 
 <details>
 <summary><b>Swedish terms used in the interface</b></summary>
@@ -96,7 +98,8 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 ## Architecture
 
 ```
-index.html          markup shell, loads D3 + topojson from CDN
+vendor/             D3 7.9.0 and topojson-client 3.1.0 (ISC), served from the same origin
+index.html          markup shell, loads D3 + topojson from vendor/, start-up guard
 src/core.js         pure logic: dates, GEDCOM parsing and dates, kinship terms, views, duplicate scoring, undo history
 src/app/            the UI as ES modules, one per area:
   main.js           everything that runs on load: header wiring, routing, start-up

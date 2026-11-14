@@ -426,3 +426,13 @@ describe('reviewing who counts as living', () => {
     expect(core.likelyDeceased(persons.kid, persons, 2026)).toBe(false);
   });
 });
+
+describe('former names in GEDCOM', () => {
+  it('reads a second NAME as a former name of the right kind', () => {
+    const ged = `0 HEAD\n1 CHAR UTF-8\n0 @I1@ INDI\n1 NAME Lena /Rosengren/\n1 NAME Lena /Sjöberg/\n2 TYPE birth\n1 SEX F\n0 @I2@ INDI\n1 NAME Elisabeth /Ek/\n1 NAME Lisbeth /Ek/\n2 TYPE aka\n0 TRLR\n`;
+    const r = core.parseGedcom(ged);
+    const ps = Object.values(r.persons);
+    expect(ps.find((p) => p.surname === 'Rosengren').formerNames).toEqual([{ given: '', surname: 'Sjöberg', type: 'birth' }]);
+    expect(ps.find((p) => p.given === 'Elisabeth').formerNames).toEqual([{ given: 'Lisbeth', surname: '', type: 'aka' }]);
+  });
+});

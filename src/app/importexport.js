@@ -1,13 +1,13 @@
 /* Släktsagan · importexport.js — Excel/CSV and GEDCOM import, export (GEDCOM, CSV, JSON backup). */
-import { Backup } from './backup.js?v=50';
-import { exitDemo } from './demo.js?v=50';
-import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=50';
-import { confirmBox, modal } from './modal.js?v=50';
-import { E } from './panel.js?v=50';
-import { renderAll, setFocus } from './router.js?v=50';
-import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=50';
-import { Hist, Store } from './store.js?v=50';
-import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf } from './util.js?v=50';
+import { Backup } from './backup.js?v=52';
+import { exitDemo } from './demo.js?v=52';
+import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=52';
+import { confirmBox, modal } from './modal.js?v=52';
+import { E } from './panel.js?v=52';
+import { renderAll, setFocus } from './router.js?v=52';
+import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=52';
+import { Hist, Store } from './store.js?v=52';
+import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf } from './util.js?v=52';
 
 /* ============ IMPORT / EXPORT ============ */
 const FIELDS=[
@@ -258,6 +258,7 @@ function toGedcom(){
   const cites=(p,lvl,about)=>{for(const c of (p.citations||[]).filter(c=>c.about===about)) if(sid[c.sourceId]){add(lvl,'SOUR',sid[c.sourceId]); if(c.detail) add(lvl+1,'PAGE',c.detail);}};
   for(const p of Object.values(S.persons)){
     add(0,iid[p.id],'INDI'); add(1,'NAME',`${p.given||''} /${p.surname||''}/`.trim()); if(p.given) add(2,'GIVN',p.given); if(p.surname) add(2,'SURN',p.surname);
+    for(const n of p.formerNames||[]){ const g=n.given||p.given||'', su=n.surname||p.surname||''; add(1,'NAME',`${g} /${su}/`.trim()); if(g) add(2,'GIVN',g); if(su) add(2,'SURN',su); add(2,'TYPE',n.type==='birth'?'birth':n.type==='married'?'married':'aka'); }
     if(p.sex) add(1,'SEX',p.sex==='K'?'F':'M');
     if(p.birthDate||p.birthPlace){add(1,'BIRT'); if(p.birthDate) add(2,'DATE',gedDate(p.birthDate)); if(p.birthPlace) add(2,'PLAC',placeName(p.birthPlace)); cites(p,2,'Födelse');}
     if(p.deathDate||p.deathPlace){add(1,'DEAT'); if(p.deathDate) add(2,'DATE',gedDate(p.deathDate)); if(p.deathPlace) add(2,'PLAC',placeName(p.deathPlace)); cites(p,2,'Död');}

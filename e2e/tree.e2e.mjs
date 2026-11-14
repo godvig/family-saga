@@ -1,4 +1,4 @@
-import { test, expect, example } from './fixtures.mjs';
+import { test, expect, example, fresh } from './fixtures.mjs';
 
 test('the example opens with a tree of cards', async ({ page }) => {
   await example(page);
@@ -11,7 +11,7 @@ test('clicking a card keeps it in place while the tree rearranges around it', as
   await expect(page.locator('#treeSvg g.card').first()).toBeVisible();
   // a card well inside the view that isn't the focus person
   const k = await page.evaluate(() => [...document.querySelectorAll('#treeSvg g.card:not(.focus)')].map((e) => [e.dataset.k, e.querySelector('rect.bg').getBoundingClientRect()])
-    .find(([k, r]) => !k.startsWith('g:') && r.x > 60 && r.right < innerWidth - 460 && r.y > 200 && r.bottom < innerHeight - 40)[0]);
+    .find(([k, r]) => !k.startsWith('g:') && r.x > 260 && r.right < innerWidth - 620 && r.y > 260 && r.bottom < innerHeight - 120)[0]);
   const card = () => page.locator(`#treeSvg g.card[data-k="${k}"] rect.bg`);
   const before = await card().boundingBox();
   await card().click({ position: { x: before.width - 30, y: 18 } });
@@ -59,4 +59,16 @@ test('a locked tree grows to include someone picked outside it', async ({ page }
   await expect(page.locator('#tAnc')).toHaveValue('2');   // the control follows
   await page.click('.toast-btn');   // "Ångra" puts the old view back
   await expect.poll(() => page.evaluate(() => app.ui.ancGen)).toBe(1);
+});
+test("a woman's husband sits to her left in side branches", async ({ page }) => {
+  await fresh(page);
+  const r = await page.evaluate(async () => {
+    const P = (id, given, sex, extra = {}) => app.Store.put({ kind: 'person', id, given, surname: 'T', sex, birthDate: extra.b || '', spouseIds: extra.sp || [], fatherId: extra.f || '', motherId: extra.m || '' });
+    await P('far', 'Far', 'M', { sp: ['mor'] }); await P('mor', 'Mor', 'K', { sp: ['far'] });
+    await P('me', 'Jag', 'M', { f: 'far', m: 'mor' });
+    await P('sis', 'Syster', 'K', { f: 'far', m: 'mor', sp: ['man'] }); await P('man', 'Svåger', 'M', { sp: ['sis'] });
+    const L = app.treeLayout(app.P('me'), true); const x = (id) => L.nodes.find((n) => n.data.p && n.data.p.id === id).x;
+    return x('man') < x('sis');
+  });
+  expect(r).toBe(true);
 });

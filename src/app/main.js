@@ -1,44 +1,44 @@
 /* Släktsagan · main.js — starts the app: wires the header, routes and loads the archive.
    Every other module only declares things; everything that runs on load is here, in order. */
-import { Unpub } from './backup.js?v=50';
-import { fullName, lifespan, placeName, sexColor } from './domain.js?v=50';
-import { mapState, renderMap } from './map.js?v=50';
-import { photoTo } from './media.js?v=50';
-import { PWA } from './pwa.js?v=50';
-import { renderAll, route, setFocus, showPerson, updateMoreBtn } from './router.js?v=50';
-import { Share, shareTreeModal } from './share.js?v=50';
-import { S, ui } from './state.js?v=50';
-import { Hist, Store } from './store.js?v=50';
-import { applySimple, applySize, applyTheme, settingsModal } from './theme.js?v=50';
-import { $, esc, norm, toast } from './util.js?v=50';
-import { openViewMenu } from './views.js?v=50';
-import * as util from './util.js?v=50';
-import * as state from './state.js?v=50';
-import * as store from './store.js?v=50';
-import * as domain from './domain.js?v=50';
-import * as router from './router.js?v=50';
-import * as tree from './tree.js?v=50';
-import * as persons from './persons.js?v=50';
-import * as panel from './panel.js?v=50';
-import * as media from './media.js?v=50';
-import * as modal from './modal.js?v=50';
-import * as places from './places.js?v=50';
-import * as timeline from './timeline.js?v=50';
-import * as map from './map.js?v=50';
-import * as importexport from './importexport.js?v=50';
-import * as theme from './theme.js?v=50';
-import * as start from './start.js?v=50';
-import * as fan from './fan.js?v=50';
-import * as card from './card.js?v=50';
-import * as dups from './dups.js?v=50';
-import * as relationship from './relationship.js?v=50';
-import * as print from './print.js?v=50';
-import * as views from './views.js?v=50';
-import * as demo from './demo.js?v=50';
-import * as share from './share.js?v=50';
-import * as backup from './backup.js?v=50';
-import * as pwa from './pwa.js?v=50';
-import * as research from './research.js?v=50';
+import { Unpub } from './backup.js?v=52';
+import { allNames, fullName, lifespan, placeName, sexColor } from './domain.js?v=52';
+import { mapState, renderMap } from './map.js?v=52';
+import { photoTo } from './media.js?v=52';
+import { PWA } from './pwa.js?v=52';
+import { renderAll, route, setFocus, showPerson, updateMoreBtn } from './router.js?v=52';
+import { Share, shareTreeModal } from './share.js?v=52';
+import { S, ui } from './state.js?v=52';
+import { Hist, Store } from './store.js?v=52';
+import { applySimple, applySize, applyTheme, settingsModal } from './theme.js?v=52';
+import { $, esc, norm, toast } from './util.js?v=52';
+import { openViewMenu } from './views.js?v=52';
+import * as util from './util.js?v=52';
+import * as state from './state.js?v=52';
+import * as store from './store.js?v=52';
+import * as domain from './domain.js?v=52';
+import * as router from './router.js?v=52';
+import * as tree from './tree.js?v=52';
+import * as persons from './persons.js?v=52';
+import * as panel from './panel.js?v=52';
+import * as media from './media.js?v=52';
+import * as modal from './modal.js?v=52';
+import * as places from './places.js?v=52';
+import * as timeline from './timeline.js?v=52';
+import * as map from './map.js?v=52';
+import * as importexport from './importexport.js?v=52';
+import * as theme from './theme.js?v=52';
+import * as start from './start.js?v=52';
+import * as fan from './fan.js?v=52';
+import * as card from './card.js?v=52';
+import * as dups from './dups.js?v=52';
+import * as relationship from './relationship.js?v=52';
+import * as print from './print.js?v=52';
+import * as views from './views.js?v=52';
+import * as demo from './demo.js?v=52';
+import * as share from './share.js?v=52';
+import * as backup from './backup.js?v=52';
+import * as pwa from './pwa.js?v=52';
+import * as research from './research.js?v=52';
 
 /** For the browser console and the browser tests: everything, under one name. */
 const app = Object.freeze(Object.assign({}, util, state, store, domain, router, tree, persons, panel, media, modal, places, timeline, map, importexport, theme, start, fan, card, dups, relationship, print, views, demo, share, backup, pwa, research));
@@ -90,13 +90,19 @@ $('#viewBtn').onclick=openViewMenu;
   const q=$('#q'),res=$('#qres'); let hl=0,items=[];
   const draw=()=>{res.innerHTML=items.map((p,i)=>`<div class="item ${i===hl?'hl':''}" data-id="${p.id}"><span class="dot" style="background:${sexColor(p)}"></span><b>${esc(fullName(p))}</b> <span class="muted small">${esc(lifespan(p))} ${esc(placeName(p.birthPlace))}</span></div>`).join('')||'<div class="item muted">Ingen träff</div>'; res.classList.add('open'); res.querySelectorAll('[data-id]').forEach(el=>el.onmousedown=e=>{e.preventDefault();pick(el.dataset.id);});};
   const pick=id=>{q.value='';res.classList.remove('open');q.blur(); setFocus(id); ui.treeKey=null; showPerson(id);};
-  q.oninput=()=>{const t=norm(q.value); if(!t){res.classList.remove('open');return;} items=Object.values(S.persons).filter(p=>norm(fullName(p)).includes(t)).slice(0,12); hl=0; draw();};
+  q.oninput=()=>{const t=norm(q.value); if(!t){res.classList.remove('open');return;} items=Object.values(S.persons).filter(p=>norm(allNames(p)).includes(t)).slice(0,12); hl=0; draw();};
   q.onkeydown=e=>{if(!res.classList.contains('open')) return; if(e.key==='ArrowDown'){hl=Math.min(hl+1,items.length-1);draw();e.preventDefault();} if(e.key==='ArrowUp'){hl=Math.max(hl-1,0);draw();e.preventDefault();} if(e.key==='Enter'&&items[hl]) pick(items[hl].id); if(e.key==='Escape'){res.classList.remove('open');}};
   q.onblur=()=>setTimeout(()=>res.classList.remove('open'),120);
 })();
 $('#home').addEventListener('click',e=>{e.preventDefault(); ui.sel=null; if(location.hash!=='#start') location.hash='start'; else renderAll(true);});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&ui.placing){ui.placing=null; if(ui.view==='karta') renderMap();}});
-window.addEventListener('resize',()=>{clearTimeout(window._rz); window._rz=setTimeout(()=>{ui.treeKey=null; mapState.drawn=false; renderAll();},200);});
+/* Redraw when the window gets wider or narrower. Height alone changes every time a phone's
+   keyboard opens or the address bar slides away; redrawing then threw away the text field
+   you were typing in and closed the keyboard again. */
+{let lastW=window.innerWidth;
+window.addEventListener('resize',()=>{clearTimeout(window._rz); window._rz=setTimeout(()=>{
+  const w=window.innerWidth, typing=document.activeElement&&/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if(w===lastW||typing) return; lastW=w; ui.treeKey=null; mapState.drawn=false; renderAll();},200);});}
 route();
 {const m=location.hash.match(/^#(dela|visa)-([0-9a-f-]{36})\.([A-Za-z0-9_-]{40,})(?:\.([A-Za-z0-9_-]{40,}))?$/); if(m){Share.pendingJoin={id:m[2],r:m[3],e:m[4]||'',kind:m[1]==='visa'?'read':'edit'}; history.replaceState(null,'',location.pathname+location.search+'#start');}}
 addEventListener('beforeunload',e=>{ if(Unpub.count()){ e.preventDefault(); e.returnValue=''; } });

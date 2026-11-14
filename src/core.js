@@ -846,7 +846,16 @@
         if (t === 'BIRT' && !birthDone) { birthDone = true; const d = fromGedDate(kidv(k, 'DATE')); if (d) p.birthDate = d; const pl = place(kid(k, 'PLAC')); if (pl) p.birthPlace = pl; p.citations.push(...cites(k, 'Födelse')); const nt = kid(k, 'NOTE'); if (nt) notes.push('Födelse: ' + noteText(nt)); }
         else if (t === 'DEAT' && !deathDone) { deathDone = true; const d = fromGedDate(kidv(k, 'DATE')); if (d) p.deathDate = d; const pl = place(kid(k, 'PLAC')); if (pl) p.deathPlace = pl; const ca = kidv(k, 'CAUS'); if (ca) notes.push('Dödsorsak: ' + ca); p.citations.push(...cites(k, 'Död')); const nt = kid(k, 'NOTE'); if (nt) notes.push('Död: ' + noteText(nt)); }
         else if (t === 'OCCU') { const v = k.val.trim(); if (v && !p.occupation) p.occupation = v; const d = fromGedDate(kidv(k, 'DATE')); if (v && (d || p.occupation !== v)) p.events.push({ id: id('e'), type: 'Yrke', desc: v, date: d, placeId: place(kid(k, 'PLAC')) }); p.citations.push(...cites(k, 'Yrke')); }
-        else if (t === 'NAME') { p.citations.push(...cites(k, 'Namn')); }
+        else if (t === 'NAME') {
+          p.citations.push(...cites(k, 'Namn'));
+          if (k !== nm) { // a second NAME is a former name: birth (maiden), married or also-known-as
+            const v = k.val.trim(), sm = v.match(/\/([^/]*)\//);
+            const g = (sm ? v.replace(sm[0], ' ') : v).replace(/[*\s]+/g, (x) => x.includes(' ') ? ' ' : '').trim() || kidv(k, 'GIVN'), su = (sm ? sm[1].trim() : '') || kidv(k, 'SURN');
+            const ty = kidv(k, 'TYPE').toLowerCase(), type = /birth|maiden/.test(ty) ? 'birth' : /married/.test(ty) ? 'married' : 'aka';
+            const fn = { given: g === p.given ? '' : g, surname: su === p.surname ? '' : su, type };
+            if (fn.given || fn.surname) (p.formerNames = p.formerNames || []).push(fn);
+          }
+        }
         else if (GED_EVENTS[t] || OTHER_EVENTS[t] || t === 'EVEN' || t === 'FACT') {
           let type = GED_EVENTS[t] || 'Övrigt', desc = k.val.trim(); const ty = kidv(k, 'TYPE');
           if (t === 'EVEN' || t === 'FACT') { const sw = SWE_TYPES.find(x => x.toLowerCase() === ty.toLowerCase()); if (sw) type = sw; else desc = [ty, desc].filter(Boolean).join(': '); }

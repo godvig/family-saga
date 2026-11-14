@@ -1,18 +1,18 @@
 /* Släktsagan · tree.js — The family tree: layout, drawing, animation and the kinship highlight. */
-import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=50';
-import { pickImageFor } from './media.js?v=50';
-import { openPersonModal } from './modal.js?v=50';
-import { openCount } from './panel.js?v=50';
-import { printChart } from './print.js?v=50';
-import { relChainSheet, relation } from './relationship.js?v=50';
-import { emptyState, renderAll, select, setFocus } from './router.js?v=50';
-import { linkModal, treeOf, trees } from './start.js?v=50';
-import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=50';
-import { Store } from './store.js?v=50';
-import { themeName } from './theme.js?v=50';
-import { $, esc, toast } from './util.js?v=50';
-import { hideModal } from './views.js?v=50';
-import { Share } from './share.js?v=50';
+import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=52';
+import { pickImageFor } from './media.js?v=52';
+import { openPersonModal } from './modal.js?v=52';
+import { openCount } from './panel.js?v=52';
+import { printChart } from './print.js?v=52';
+import { relChainSheet, relation } from './relationship.js?v=52';
+import { emptyState, renderAll, select, setFocus } from './router.js?v=52';
+import { linkModal, treeOf, trees } from './start.js?v=52';
+import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=52';
+import { Store } from './store.js?v=52';
+import { themeName } from './theme.js?v=52';
+import { $, esc, toast } from './util.js?v=52';
+import { hideModal } from './views.js?v=52';
+import { Share } from './share.js?v=52';
 
 /* ============ TREE ============ */
 const KIN_LEVELS=['Inga','Syskon','Kusiner','Sysslingar','Tremänningar','Fyrmänningar','Femmänningar','Sexmänningar','Sjumänningar','Åttamänningar','Niomänningar'];
@@ -64,15 +64,24 @@ function treeLayout(F,showSp){
     const sps=showSp?partners(p).filter(q=>!shown.has(q.id)):[]; sps.forEach(q=>shown.add(q.id));
     let kids=[]; if(dd<maxD){kids=children(p.id); if(showSp) for(const q of sps) for(const c of children(q.id)) if(!kids.includes(c)) kids.push(c);}
     kids=kids.filter(c=>!shown.has(c.id)); kids.forEach(c=>shown.add(c.id));
+    // children under the partner they belong to: left partners' children first, then right partners'
+    if(sps.length){ const side=sideOf(p,sps), pos=c=>{const i=sps.findIndex(q=>q.id===c.fatherId||q.id===c.motherId); return i<0?0:side[i]*(Math.floor(i/2)+1);};
+      kids=kids.map((c,i)=>[c,i]).sort((x,y)=>pos(x[0])-pos(y[0])||x[1]-y[1]).map(x=>x[0]); }
     return {p,sps,children:kids.map(c=>mk(c,dd+1,maxD))};};
   // place a laid-out node: couple centred on c, person card first, partners to the right
-  const expand=(n,c,y)=>{const w=W(n.data); n.y=y; n.x=c-(w-CW)/2; n.spx=n.data.sps.map((q,i)=>n.x+(i+1)*(CW+CG)); nodes.push(n);
-    n.data.sps.forEach((q,i)=>{nodes.push({data:{p:q,partner:true},x:n.spx[i],y}); links.push({type:'cp',x1:(i?n.spx[i-1]:n.x)+CW/2,x2:n.spx[i]-CW/2,y});});};
+  // Several partners alternate sides – first to the right, second to the left, third to the right…
+  // so each partner gets their own line from the person and partners never sit two in a row.
+  const sideOf=(p,sps)=>{const flip=p.sex==='K'&&sps[0]&&sps[0].sex!=='K'?-1:1; return sps.map((q,i)=>i%2===0?flip:-flip);};
+  const expand=(n,c,y)=>{const w=W(n.data), sps=n.data.sps, side=sideOf(n.data.p,sps), step=CW+CG, L=side.filter(x=>x<0).length; n.y=y; n.x=c-(w-CW)/2+L*step;
+    const cnt={'-1':0,'1':0}; n.spx=sps.map((q,i)=>n.x+side[i]*(++cnt[side[i]])*step);
+    n.inner=sps.map((q,i)=>{const prev=sps.findLastIndex((x,j)=>j<i&&side[j]===side[i]); return prev<0?n.x:n.spx[prev];}); nodes.push(n);
+    sps.forEach((q,i)=>{const x=n.spx[i], r=side[i]>0; nodes.push({data:{p:q,partner:true},x,y});
+      links.push({type:'cp',x1:r?n.inner[i]+CW/2:x+CW/2,x2:r?x-CW/2:n.inner[i]-CW/2,y,dash:n.inner[i]!==n.x});});};
   // where the line down to child n starts
   const srcOf=n=>{const pn=n.parent, c=n.data.p, pp=pn.data.p;
     const own=c.fatherId===pp.id||c.motherId===pp.id, other=c.fatherId===pp.id?c.motherId:c.fatherId;
     const i=pn.data.sps.findIndex(q=>q.id===(own?other:(c.fatherId&&pn.data.sps.some(q=>q.id===c.fatherId)?c.fatherId:c.motherId)));
-    if(own&&i>=0) return {x:pn.spx[i]-(CW+CG)/2,y:pn.y,mid:true};
+    if(own&&i>=0) return {x:(pn.spx[i]+pn.inner[i])/2,y:pn.y,mid:true};
     if(!own&&i>=0) return {x:pn.spx[i],y:pn.y};
     return {x:pn.x,y:pn.y};};
   // descendants of the focus person: one block per couple, centred under that couple's junction
@@ -121,10 +130,25 @@ function treeLayout(F,showSp){
      const jOf=c=>{const fa=pos[c.fatherId]||extraPos[c.fatherId], mo=pos[c.motherId]||extraPos[c.motherId]; return fa&&mo?(fa.x+mo.x)/2:(fa||mo).x;};
      const parts2=new Map(); for(const c of kids){const k=(c.fatherId||'')+'|'+(c.motherId||''); if(!parts2.has(k)) parts2.set(k,[]); parts2.get(k).push(c);}
      const blocks=[...parts2.values()].sort((a,b)=>Math.abs(jOf(a[0]))-Math.abs(jOf(b[0])));
+     // The focus's own brothers and sisters are split over both sides, so the tree stays centred:
+     // oldest to the left, youngest to the right, cut where the two sides come out most even.
+     const place=[];
      for(const bk of blocks){
-     const mx=jOf(bk[0]);
-     const dir=g0.d===1?(mx<-CW/2?-1:mx>CW/2?1:(mxAll<-1?-1:mxAll>1?1:sideDefault)):(mxAll<-1?-1:mxAll>1?1:sideDefault);
-     const block=d3.hierarchy({root:true,sps:[],children:bk.map(k=>mk(k,1,maxD))});
+       const mx=jOf(bk[0]), subs=bk.map(k=>mk(k,1,maxD));
+       if(g0.d===1&&Math.abs(mx)<=CW/2&&subs.length>1){
+         const width=sub=>{const h=d3.hierarchy({root:true,sps:[],children:[sub]}); d3.tree().nodeSize([1,ROW]).separation(sepF)(h); const e={};
+           for(const n of h.descendants()) if(n.depth>0){const w=W(n.data); const r=e[n.depth]||(e[n.depth]=[n.x-w/2,n.x+w/2]); r[0]=Math.min(r[0],n.x-w/2); r[1]=Math.max(r[1],n.x+w/2);}
+           return Math.max(...Object.values(e).map(r=>r[1]-r[0]))+GAPX;};
+         const ws=subs.map(width), o0=occ[0]||[-CW/2,CW/2], fy=KinCore.yearOf(F.birthDate);
+         const chrono=fy?subs.filter(t=>(KinCore.yearOf(t.p.birthDate)||9999)<fy).length:Math.ceil(subs.length/2);
+         let best=0, bestScore=Infinity;
+         for(let k=0;k<=subs.length;k++){ const l=-o0[0]+ws.slice(0,k).reduce((a,b)=>a+b,0), r=o0[1]+ws.slice(k).reduce((a,b)=>a+b,0);
+           const score=Math.abs(l-r)+Math.abs(k-chrono)*CW*0.25; if(score<bestScore){bestScore=score; best=k;} }
+         if(best>0) place.push({subs:subs.slice(0,best),mx,dir:-1}); if(best<subs.length) place.push({subs:subs.slice(best),mx,dir:1});
+       } else place.push({subs,mx,dir:g0.d===1?(mx<-CW/2?-1:mx>CW/2?1:(mxAll<-1?-1:mxAll>1?1:sideDefault)):(mxAll<-1?-1:mxAll>1?1:sideDefault)});
+     }
+     for(const {subs,mx,dir} of place){
+     const block=d3.hierarchy({root:true,sps:[],children:subs});
      d3.tree().nodeSize([1,ROW]).separation(sepF)(block);
      const bn=block.descendants().filter(n=>n.depth>0);
      const ext={}; for(const n of bn){const r=Math.round(py/ROW)+n.depth, w=W(n.data); const e=ext[r]||(ext[r]=[n.x-w/2,n.x+w/2]); if(n.x-w/2<e[0]) e[0]=n.x-w/2; if(n.x+w/2>e[1]) e[1]=n.x+w/2;}
@@ -224,7 +248,7 @@ function renderTree(fresh){
     $('#tDesc').onchange=e=>{ui.descGen=+e.target.value;ui.treeKey=null;renderTree();};
     $('#tKin').onchange=e=>{ui.kinDeg=+e.target.value;ui.treeKey=null;renderTree();};
     $('#tFit').onclick=()=>{ui.treeKey=null;renderTree();};
-    $('#tSp').onchange=e=>{ui.showPartners=e.target.checked;ui.treeKey=null;renderTree();};
+    $('#tSp').onchange=e=>{ui.showPartners=e.target.checked; try{localStorage.setItem('sa-partners',e.target.checked?'1':'0');}catch(err){} ui.treeKey=null;renderTree();};
     $('#tSize').onchange=e=>{ui.cardSize=e.target.value;ui.treeKey=null;renderTree();};
     $('#tMe').onclick=()=>{const h=homePerson(); if(!h){toast('Välj vem du är under Inställningar eller med ”Det här är jag” på ditt personkort.',5000);return;} treeGoTo(h.id);};
     $('#tSel').onclick=()=>{const id=ui.sel&&ui.sel.type==='person'?ui.sel.id:ui.focus; treeGoTo(id);};

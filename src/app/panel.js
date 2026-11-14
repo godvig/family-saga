@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=50';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=50';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=50';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=50';
-import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=50';
-import { Share, askName } from './share.js?v=50';
-import { logSection } from './research.js?v=50';
-import { linkModal } from './start.js?v=50';
-import { ALL, S, ui } from './state.js?v=50';
-import { Hist, Store } from './store.js?v=50';
-import { openCard } from './theme.js?v=50';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=50';
-import { fillNames, hideModal } from './views.js?v=50';
+import { P, PIXEL, formerNamesText, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=52';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=52';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=52';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=52';
+import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=52';
+import { Share, askName } from './share.js?v=52';
+import { logSection } from './research.js?v=52';
+import { linkModal } from './start.js?v=52';
+import { ALL, S, ui } from './state.js?v=52';
+import { Hist, Store } from './store.js?v=52';
+import { openCard } from './theme.js?v=52';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=52';
+import { fillNames, hideModal } from './views.js?v=52';
 
 /* ============ PANEL ============ */
 function renderPanel(){
@@ -43,7 +43,7 @@ function personPanel(p){
   const aboutLabel=a=>{if(!a) return 'Allmänt'; if(a.startsWith('event:')){const e=(p.events||[]).find(e=>'event:'+e.id===a); return e?e.type+(e.date?' '+e.date:''):'Händelse';} return a;};
   return `<div class="ph"><div class="top">
       ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?avImg(p):`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" accept="image/*" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div>`}
-      <div style="flex:1;min-width:0"><h3>${fullHtml(p)}</h3><div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
+      <div style="flex:1;min-width:0"><h3>${fullHtml(p)}</h3>${p.formerNames&&formerNamesText(p)?`<div class="fname">${esc(formerNamesText(p))}</div>`:''}<div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
       ${closeBtn}</div>
     <div class="acts">
       <button class="btn sm" data-act="card">Personkort</button>${ed&&av?'<button class="btn sm" data-act="photo" title="Flytta och zooma bilden så att ansiktet hamnar rätt">Justera bild</button>':''}
@@ -72,7 +72,7 @@ function personPanel(p){
   ${ed||evs.length?`  <div class="sec"><h4>Händelser ${ed?'<button class="btn sm" data-act="addev">+ Händelse</button>':''}</h4>
     <div id="evform"></div>
     ${evs.length?evs.map(e=>{const nc=e.id?cites.filter(c=>c.about==='event:'+e.id).length:0; return `<div class="ev"><span class="d">${esc(e.date||'–')}</span><span class="w"><b>${esc(e.type)}</b>${e.placeId?` · <a href="#" data-place="${e.placeId}">${esc(placeName(e.placeId))}</a>`:''}${e.withId&&P(e.withId)?` · med <a href="#" data-goto="${e.withId}">${esc(fullName(P(e.withId)))}</a>`:''}${e.desc?`<div class="small muted">${esc(e.desc)}</div>`:''}${nc?`<div class="small muted">📜 ${nc} källhänvisning${nc>1?'ar':''}</div>`:''}</span>
-      <span>${ed&&e.id?`<button class="iconbtn" data-editev="${e.id}" title="Redigera">✎</button>`:''}</span></div>`}).join(''):'<div class="muted small">Inga händelser registrerade.</div>'}
+      <span>${ed&&e.id?`<button class="iconbtn" data-editev="${e.id}" ${e.ownerId?`data-evowner="${e.ownerId}" title="Redigera (sparas hos ${esc(shortName(P(e.ownerId)))} och syns hos båda)"`:'title="Redigera"'}>✎</button>`:''}</span></div>`}).join(''):'<div class="muted small">Inga händelser registrerade.</div>'}
   </div>`:''}
   ${ed||cites.length?`  <div class="sec cites"><h4>Källor ${ed?'<button class="btn sm" data-act="addcite">+ Källhänvisning</button>':''}</h4>
     <div id="citeform"></div>
@@ -245,7 +245,7 @@ function bindPersonPanel(p){
   pn.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{
     const act=b.dataset.act;
     if(act==='focus'){setFocus(p.id);ui.treeKey=null; if(ui.view!=='trad') location.hash='trad'; else renderAll();}
-    if(act==='edit') openPersonModal(p);
+    if(act==='edit'){ const nt=a('#notes'); if(nt&&nt.value!==(P(p.id).notes||'')){const q=clone(P(p.id)); q.notes=nt.value; Store.put(q,{silent:true});} openPersonModal(P(p.id)); }
     if(act==='card') openCard(p.id);
     if(act==='hide') hideModal(p);
     if(act==='rel'){ui.relB=p.id; if(!ui.relA||ui.relA===p.id) ui.relA=(homePerson()&&homePerson().id!==p.id)?homePerson().id:(ui.focus!==p.id?ui.focus:null); location.hash='slaktskap';}
@@ -262,14 +262,14 @@ function bindPersonPanel(p){
     openPersonModal(null,{rel:b.dataset.add,of:p.id});});
   pn.querySelectorAll('[data-unlink]').forEach(b=>b.onclick=()=>{const q=clone(p); q[b.dataset.unlink]=''; Store.put(q);});
   pn.querySelectorAll('[data-unspouse]').forEach(b=>b.onclick=()=>{const o=P(b.dataset.unspouse); const q=clone(p); q.spouseIds=(q.spouseIds||[]).filter(x=>x!==o.id); Store.put(q,{silent:true}); if(o){const r=clone(o); r.spouseIds=(r.spouseIds||[]).filter(x=>x!==p.id); Store.put(r,{silent:true});} renderAll();});
-  pn.querySelectorAll('[data-editev]').forEach(b=>b.onclick=()=>eventForm(p,(p.events||[]).find(e=>e.id===b.dataset.editev)));
+  pn.querySelectorAll('[data-editev]').forEach(b=>b.onclick=()=>{const o=b.dataset.evowner?P(b.dataset.evowner):p; eventForm(o,(o.events||[]).find(e=>e.id===b.dataset.editev),p);});
   pn.querySelectorAll('[data-delcite]').forEach(b=>b.onclick=()=>{const q=clone(p); q.citations=(q.citations||[]).filter(c=>c.id!==b.dataset.delcite); Store.put(q);});
   const nt=a('#notes'); if(nt) nt.onblur=()=>{if((p.notes||'')!==nt.value){const q=clone(P(p.id)); q.notes=nt.value; Store.put(q,{silent:true}); $('#notesHint').textContent='Sparat ✓';}};
 }
 function placeOptions(){return `<datalist id="dlPlaces">${Object.values(S.places).sort((a,b)=>a.name.localeCompare(b.name,'sv')).map(pl=>`<option value="${esc(pl.name)}">`).join('')}</datalist>`;}
 function personOptions(exclude){return `<datalist id="dlPersons">${Object.values(S.persons).filter(x=>x.id!==exclude).map(x=>{const l=personLabel(x);return `<option value="${esc(l)}">`;}).join('')}</datalist>`;}
 function personByLabel(label){label=norm(label); if(!label) return null; const all=Object.values(S.persons); return all.find(x=>norm(personLabel(x))===label)||(()=>{const m=all.filter(x=>norm(fullName(x))===label); return m.length===1?m[0]:null;})();}
-function eventForm(p,ev){
+function eventForm(p,ev,shownOn){
   const f=$('#evform'); const isNew=!ev; ev=ev||{type:'Flytt'};
   f.innerHTML=`<div class="mini">
     <div class="row2"><label class="f"><span>Typ</span><select class="t" id="evT">${EVENT_TYPES.map(t=>`<option ${t===ev.type?'selected':''}>${t}</option>`).join('')}</select></label>
@@ -287,6 +287,7 @@ function eventForm(p,ev){
     const ne={id:ev.id||uid('e'),type:$('#evT').value,date:$('#evD').value.trim(),placeId:pl.id,desc:$('#evX').value.trim(),withId:w?w.id:''};
     q.events=(q.events||[]).filter(e=>e.id!==ne.id).concat([ne]);
     Store.put(q);
+    if(w&&isNew) toast(`Händelsen syns också hos ${shortName(w)}.`,3500);
   };
 }
 /** Links for a citation: the image at Riksarkivet, or the AID to paste into ArkivDigital. */

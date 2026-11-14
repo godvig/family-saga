@@ -41,3 +41,16 @@ test('on a phone a relationship is shown as one chain, also over the tree', asyn
   await page.click('#relChain');
   await expect(sheet).toBeVisible();
 });
+
+test('typing a note on a phone: the keyboard opening does not redraw the page', async ({ page }) => {
+  await example(page);
+  await page.evaluate(() => { app.ui.sel = null; location.hash = 'trad'; });
+  await page.evaluate(() => app.select('person', 'p_gustav1'));
+  const nt = page.locator('#notes');
+  await nt.scrollIntoViewIfNeeded(); await nt.focus();
+  await page.evaluate(() => { window.__note = document.querySelector('#notes'); });
+  const v = page.viewportSize(); await page.setViewportSize({ width: v.width, height: Math.round(v.height * 0.55) });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => document.querySelector('#notes') === window.__note && document.activeElement === window.__note)).toBe(true);
+  await page.setViewportSize(v);
+});

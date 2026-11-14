@@ -1,9 +1,9 @@
 /* Släktsagan · timeline.js — The timeline. */
-import { P, fullName, lifeEvents, placeName, scopeSet, sexColor } from './domain.js?v=50';
-import { emptyState, showPerson } from './router.js?v=50';
-import { S, ui } from './state.js?v=50';
-import { cssv } from './theme.js?v=50';
-import { $, HIST, NOW_Y, dateKey, esc } from './util.js?v=50';
+import { P, fullName, lifeEvents, placeName, scopeSet, sexColor } from './domain.js?v=52';
+import { emptyState, showPerson } from './router.js?v=52';
+import { S, ui } from './state.js?v=52';
+import { cssv } from './theme.js?v=52';
+import { $, HIST, NOW_Y, dateKey, esc } from './util.js?v=52';
 
 /* ============ TIMELINE ============ */
 function renderTimeline(){
@@ -36,7 +36,7 @@ function renderTimeline(){
   v.querySelectorAll('#tlScope button').forEach(b=>b.onclick=()=>{ui.tlScope=b.dataset.k;renderTimeline();});
   $('#tlHist').onchange=e=>{ui.tlHist=e.target.checked;renderTimeline();};
   // event list
-  const list=[]; for(const p of ppl) for(const e of lifeEvents(p)) if(e.date) list.push({p,e,k:dateKey(e.date)});
+  const list=[]; for(const p of ppl) for(const e of lifeEvents(p,{own:true})) if(e.date) list.push({p,e,k:dateKey(e.date)});
   list.sort((a,b)=>(a.k??9e9)-(b.k??9e9));
   $('#tlList').innerHTML=list.length?`<table class="list m-events"><thead><tr><th style="width:120px">Datum</th><th>Händelse</th><th>Person</th><th>Plats</th></tr></thead><tbody>${list.map(r=>`<tr class="click" data-id="${r.p.id}"><td>${esc(r.e.date)}</td><td>${esc(r.e.type)}${r.e.desc?`<div class="small muted">${esc(r.e.desc)}</div>`:''}</td><td><span class="dot" style="background:${sexColor(r.p)}"></span>${esc(fullName(r.p))}</td><td>${esc(placeName(r.e.placeId))}</td></tr>`).join('')}</tbody></table>`:'<p class="muted">Inga daterade händelser.</p>';
   $('#tlList').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>showPerson(tr.dataset.id));

@@ -1,10 +1,10 @@
 /* Släktsagan · modal.js — Modals and the add/edit person dialog. */
-import { P, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=50';
-import { personByLabel, personOptions, placeOptions } from './panel.js?v=50';
-import { renderAll, setFocus } from './router.js?v=50';
-import { S, ui } from './state.js?v=50';
-import { Store } from './store.js?v=50';
-import { clone, esc, toast, uid } from './util.js?v=50';
+import { NAME_TYPES, P, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=52';
+import { personByLabel, personOptions, placeOptions } from './panel.js?v=52';
+import { renderAll, setFocus } from './router.js?v=52';
+import { S, ui } from './state.js?v=52';
+import { Store } from './store.js?v=52';
+import { clone, esc, toast, uid } from './util.js?v=52';
 
 /* ============ Modal ============ */
 function modal(html,onMount){
@@ -35,6 +35,7 @@ function openPersonModal(p,ctx){
     ${isNew&&base?`<label class="f"><span>Välj en befintlig person istället (valfritt)</span><input class="t" id="mExisting" list="dlPersons" placeholder="Skriv för att söka…">${personOptions(base.id)}<div class="hint">Lämna tomt för att skapa en ny person.</div></label><hr style="border:none;border-top:1px solid var(--paper2);margin:14px 0">`:''}
     <div class="row2"><label class="f"><span>Förnamn</span><input class="t" id="mG" value="${esc(p.given)}" placeholder="t.ex. Anna Maria"></label>
     <label class="f"><span>Efternamn</span><input class="t" id="mS" value="${esc(p.surname)}" placeholder="t.ex. Larsdotter"></label></div>
+    <div class="f fnames"><span class="lab">Tidigare namn <span class="muted">– t.ex. född Sjöberg, eller Lisbeth innan hon blev Elisabeth</span></span><div id="mFN"></div><button type="button" class="btn sm" id="mFNadd">+ Tidigare namn</button></div>
     <div class="f callpick"><span class="lab">Tilltalsnamn <span class="muted">– klicka på namnet personen kallades</span></span><div id="mCallChips"></div><input type="hidden" id="mCall" value="${esc(p.callName||'')}"></div>
     <div class="row2"><label class="f"><span>Kön</span><select class="t" id="mSex"><option value="">Okänt</option><option value="M" ${p.sex==='M'?'selected':''}>Man</option><option value="K" ${p.sex==='K'?'selected':''}>Kvinna</option></select></label>
     <label class="f"><span>Yrke / titel</span><input class="t" id="mO" value="${esc(p.occupation||'')}" placeholder="t.ex. Bonde, Piga, Soldat"></label></div>
@@ -55,12 +56,22 @@ function openPersonModal(p,ctx){
       q('#mCallChips').innerHTML=ws.length>1||cur?ws.map(w=>`<button type="button" class="cchip${w===cur?' on':''}" data-w="${esc(w)}">${esc(w)}</button>`).join('')+(cur&&!ws.includes(cur)?`<button type="button" class="cchip on" data-w="${esc(cur)}">${esc(cur)}</button>`:''):'<span class="muted small">Skriv flera förnamn så kan du välja ett.</span>';
       q('#mCallChips').querySelectorAll('.cchip').forEach(b=>b.onclick=()=>{q('#mCall').value=q('#mCall').value===b.dataset.w?'':b.dataset.w; chips();});};
     q('#mG').addEventListener('input',chips); chips();
+    // Former names: one row each, given and/or surname and what kind of name it was.
+    const fnRow=(n={})=>`<div class="fn-row"><input class="t" data-fn="given" placeholder="Förnamn" value="${esc(n.given||'')}"><input class="t" data-fn="surname" placeholder="Efternamn" value="${esc(n.surname||'')}">
+      <select class="t" data-fn="type">${Object.entries(NAME_TYPES).map(([k,l])=>`<option value="${k}" ${(n.type||'birth')===k?'selected':''}>${l}</option>`).join('')}</select><button type="button" class="iconbtn" data-fndel title="Ta bort" aria-label="Ta bort">×</button></div>`;
+    const fnBind=()=>q('#mFN').querySelectorAll('[data-fndel]').forEach(b=>b.onclick=()=>{b.closest('.fn-row').remove();});
+    q('#mFN').innerHTML=(p.formerNames||[]).map(fnRow).join(''); fnBind();
+    q('#mFNadd').onclick=()=>{ q('#mFN').insertAdjacentHTML('beforeend',fnRow({type:q('#mSex').value==='K'&&!(p.formerNames||[]).length?'birth':'other'})); fnBind(); q('#mFN').lastElementChild.querySelector(q('#mSex').value==='K'?'[data-fn=surname]':'[data-fn=given]').focus(); };
     q('[data-x]').onclick=close;
     q('[data-ok]').onclick=async()=>{
       let target=null;
       if(q('#mExisting')&&q('#mExisting').value.trim()){target=personByLabel(q('#mExisting').value); if(!target){toast('Hittade ingen sådan person – välj i listan.');return;} target=clone(target);}
       if(!target){
         const g=q('#mG').value.trim(),s=q('#mS').value.trim(); if(!g&&!s){q('#mG').focus();toast('Skriv minst ett namn.');return;}
+        // Start from the person as saved now: notes, photos or events may have changed since this form opened.
+        if(!isNew&&P(p.id)) p=clone(P(p.id));
+        const fns=[...q('#mFN').querySelectorAll('.fn-row')].map(rw=>({given:rw.querySelector('[data-fn=given]').value.trim(),surname:rw.querySelector('[data-fn=surname]').value.trim(),type:rw.querySelector('[data-fn=type]').value})).filter(n=>n.given||n.surname);
+        if(fns.length) p.formerNames=fns; else delete p.formerNames;
         Object.assign(p,{given:g,callName:q('#mCall').value,surname:s,sex:q('#mSex').value,occupation:q('#mO').value.trim(),birthDate:q('#mBD').value.trim(),deathDate:q('#mDD').value.trim()}); if(q('#mDec').checked&&!p.deathDate) p.deceased=true; else delete p.deceased;
         const bp=ensurePlace(q('#mBP').value),dp=ensurePlace(q('#mDP').value);
         if(bp.created) Store.put(bp.created,{silent:true}); if(dp.created&&dp.created!==bp.created) Store.put(dp.created,{silent:true});
