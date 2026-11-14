@@ -42,7 +42,7 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 
 ## Features
 
-- **Family tree:** ancestors and descendants around any person, up to 10 generations each way. Couples follow genealogical convention (man left, woman right), and cards stay put when you move between partners.
+- **Family tree:** ancestors and descendants around any person, up to 10 generations each way. Couples follow genealogical convention (man left, woman right), and cards stay put when you move between partners. *Lock* the tree to read around in it without it rebuilding; pick someone who is outside it (from search or a name in the panel) and the locked tree grows – more generations, wider side branches – until they are in it.
 - **Fan chart:** ancestors in a half circle, coloured by grandparent line, with completeness per generation.
 - **Person cards:** an automatically written life story ("…was born on 12 May 1496 at Rydboholm… married… died aged 64"), plus family, a vertical timeline with age at each event, photos and sources.
 - **Relationship calculator:** precise Swedish kinship terms (farbror, moster, brorsdotter, kusin, tremänning, halvkusin, svåger…) with the path drawn through the common ancestor.
@@ -54,11 +54,13 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 - **Duplicate finder:** catches spelling variants (Gustaf/Gustav, Wasa/Vasa, Larsdtr/Larsdotter) and merges the records safely.
 - **Import:** GEDCOM 5.5 / 5.5.1 / 7 from any genealogy program (Disgen, MyHeritage, Ancestry, Geni, Holger, Legacy…), including the old ANSEL and IBM PC character sets Swedish programs used, the `*` call-name marker, dates like `ABT`/`BET … AND …`, coordinates, notes, sources with page references and marriages. A preview shows what was found before anything is saved; places and sources the archive already has are reused, and the whole import is one undoable step. Excel, CSV or cells pasted from Excel work too, with columns mapped automatically from Swedish or English headers.
 - **Export:** GEDCOM 5.5.1 (MyHeritage, Ancestry, Gramps, Disgen…), CSV and a JSON backup. The tree, fan chart and person cards print as PDF (A3/A4) or PNG.
+- **Family book:** the branch you see in the tree becomes a printable book (PDF): a cover with the focus person's photo, a table of contents, the tree as a picture, one chapter per generation, oldest first, with each person's life story, photo, family, events, voice-memory titles and sources, numbered so parents and children refer to each other, and an index of names.
 - **Collaboration:** when hosted as a Claude artifact, invited relatives edit the same tree live, and every change records who made it.
 - **Works on phones:** a bottom tab bar, a compact tree toolbar, person details as a sheet, touch zoom and pan.
 - **Easy to use:** a start page with three clear choices and a *simple mode* (big text, only Start, Tree and People) that a link can switch on with `?enkelt`. Mark yourself as "me" and kinship is counted from you. Light by default, dark mode on request.
 - **Call names (tilltalsnamn):** mark the name a person went by. It is underlined Swedish-style, and you can show short names everywhere (call name, or the first given name).
 - **Show the path in the tree:** the relationship calculator ("Hur är vi släkt?") opens the tree around the shared ancestor and lights up the chain between the two people, couples included, and dims everyone else.
+- **On this day:** the start page lists birthdays, death days and wedding days today and in the next two weeks – living relatives as *"turns 30"*, so it doubles as a birthday reminder, everyone else as *"born 1594, 432 years ago"*.
 - **Questions per person:** every person has a thread – *"Does anyone know when Hilda was born?"* – with replies and a *solved* mark. Open questions show as a badge on the tree card and as a list on the start page. Each comment is its own document, so two relatives commenting at the same time never overwrite each other when they publish.
 - **Swedish church records:** paste a citation copied from ArkivDigital (`Röke (L) AII:3 (1918-1933) Bild 70 / sid 3 (AID: v350192.b70.s3, NAD: SE/LLA/13324)`) or Riksarkivet (`Röke kyrkoarkiv, Församlingsböcker, SE/LLA/13324/A II/3 (1918-1933), bildid: 00127782_00010`) and the volume becomes the source, with its type (*husförhörslängd*, *födelse- och dopbok*…) read from the series letter, the county from the county letter, and image and page filled in. The same volume from both services is recognised as one source via its NAD reference. Riksarkivet images get a link; an ArkivDigital AID can be copied to open the image there. AIDs and image ids survive a GEDCOM round trip.
 - **Backups:** a local archive lives only in the browser, so *Import & export* shows when you last saved a backup and how much has changed since, and the app reminds you (at most every few days) when you have never saved one or it is two weeks old with changes. The backup is one JSON file with everything, photos and voice memories included, and reads straight back in.
@@ -148,14 +150,9 @@ To run your own: create a Supabase project, run the files in `supabase/migration
 
 ## Roadmap
 
-Done recently: undo/redo for every change, a reminder before leaving with unpublished changes, photos dropped straight onto tree cards, backup reminders, GEDCOM import, Swedish source citations, a presentation page for first-time visitors, questions and comments per person, browser tests in CI, the app split into ES modules, encrypted sharing with publish and merge, version history, photo storage with thumbnails, voice memories, animated tree, kinship path in the tree, archive in IndexedDB, self-hosted fonts, phone layout, installable offline app (PWA).
+Done recently: a family book as PDF, undo/redo for every change, a reminder before leaving with unpublished changes, photos dropped straight onto tree cards, backup reminders, GEDCOM import, Swedish source citations, a presentation page for first-time visitors, questions and comments per person, browser tests in CI, the app split into ES modules, a locked tree that grows to include whoever you pick, "On this day", encrypted sharing with publish and merge, version history, photo storage with thumbnails, voice memories, animated tree, kinship path in the tree, archive in IndexedDB, self-hosted fonts, phone layout, installable offline app (PWA).
 
-**Next, in order**
-1. Locked tree, step 2: add a branch by clicking someone outside it
-2. "On this day" on the start page
-3. Family book as PDF
-
-**Later:** life path on the map, photo gallery on the person card, read-only share links with protection for living people, "what's new since your last visit", English UI.
+**Next:** read-only share links with protection for living people, "what's new since your last visit", life path on the map, photo gallery on the person card, English UI.
 
 ## License
 
