@@ -1,17 +1,17 @@
 /* Släktsagan · start.js — The start page, the presentation page and separate trees. */
-import { demoActive } from './demo.js?v=43';
-import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=43';
-import { findDups, mergePersons } from './dups.js?v=43';
-import { confirmBox, modal } from './modal.js?v=43';
-import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=43';
-import { PWA } from './pwa.js?v=43';
-import { Share } from './share.js?v=43';
-import { renderAll, setFocus } from './router.js?v=43';
-import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=43';
-import { Store } from './store.js?v=43';
-import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=43';
-import { $, clone, esc, toast, yearOf } from './util.js?v=43';
-import { fillNames } from './views.js?v=43';
+import { demoActive } from './demo.js?v=48';
+import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=48';
+import { findDups, mergePersons } from './dups.js?v=48';
+import { confirmBox, modal } from './modal.js?v=48';
+import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=48';
+import { PWA } from './pwa.js?v=48';
+import { Share } from './share.js?v=48';
+import { renderAll, setFocus } from './router.js?v=48';
+import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=48';
+import { Store } from './store.js?v=48';
+import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=48';
+import { $, clone, esc, toast, yearOf } from './util.js?v=48';
+import { fillNames } from './views.js?v=48';
 
 /* ============ START ============ */
 function heroArt(){
@@ -155,7 +155,9 @@ let _treesKey=null,_trees=null;
 /** Groups of people not (yet) connected to each other, biggest first. */
 function trees(){
   const ps0=Object.values(S.persons);
-  const key=ps0.length+'|'+ps0.reduce((m,p)=>(p.updatedAt||'')>m?p.updatedAt:m,'')+'|'+(Store.demo?'d':'');
+  // Only what decides the groups, their names and their spans: an edited note or photo
+  // shouldn't make every edit regroup 1 500 people.
+  let key=(Store.demo?'d':'')+ps0.length; for(const p of ps0) key+='|'+p.id+','+(p.fatherId||'')+','+(p.motherId||'')+','+(p.spouseIds||'')+','+(p.surname||'')+','+(p.given||'')+','+(p.birthDate||'').slice(0,4)+(p.home?'*':'');
   if(key===_treesKey) return _trees;
   const home=homePerson();
   _trees=KinCore.components(S.persons).map((ids,i)=>{
