@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=56';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=56';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=56';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=56';
-import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=56';
-import { Share, askName } from './share.js?v=56';
-import { logSection } from './research.js?v=56';
-import { linkModal } from './start.js?v=56';
-import { ALL, S, ui } from './state.js?v=56';
-import { Hist, Store } from './store.js?v=56';
-import { openCard } from './theme.js?v=56';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=56';
-import { fillNames, hideModal } from './views.js?v=56';
+import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=57';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=57';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=57';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=57';
+import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=57';
+import { Share, askName } from './share.js?v=57';
+import { logSection } from './research.js?v=57';
+import { linkModal } from './start.js?v=57';
+import { ALL, S, ui } from './state.js?v=57';
+import { Hist, Store } from './store.js?v=57';
+import { openCard } from './theme.js?v=57';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=57';
+import { fillNames, hideModal } from './views.js?v=57';
 
 /* ============ PANEL ============ */
 function renderPanel(){
@@ -354,12 +354,22 @@ async function decodableBlob(file){
 /** Read a photo from a file, at most `max` px on the long side, as a JPEG data URL. */
 async function shrinkImage(file,max=2400,q=.88){
   file=await decodableBlob(file);
-  return new Promise((res,rej)=>{const img=new Image(); const url=URL.createObjectURL(file);
-    img.onload=()=>{ URL.revokeObjectURL(url);
-      // Stay well under the 4 MB a shared photo may take once encrypted: lower the quality, then the size.
-      for(const [m,qq] of [[max,q],[max,.8],[2000,.8],[1600,.78]]){ const k=Math.min(1,m/Math.max(img.width,img.height));
-        const d=resample(img,Math.round(img.width*k),Math.round(img.height*k)).toDataURL('image/jpeg',qq); if(d.length<2.6e6||m===1600){res(d);return;} } };
+  // Size first: the browser reads width and height without unpacking the whole picture.
+  const dim=await new Promise((res,rej)=>{const img=new Image(), url=URL.createObjectURL(file);
+    img.onload=()=>{URL.revokeObjectURL(url); res({w:img.naturalWidth,h:img.naturalHeight,img});};
     img.onerror=()=>{URL.revokeObjectURL(url); rej(new Error('Kunde inte läsa bilden'));}; img.src=url;});
+  const k=Math.min(1,max/Math.max(dim.w,dim.h)), w=Math.max(1,Math.round(dim.w*k)), h=Math.max(1,Math.round(dim.h*k));
+  /* Let the browser decode and scale in one go, off the page's own thread. A 50 or 200 megapixel
+     phone photo unpacked on a canvas takes hundreds of megabytes and froze the whole browser. */
+  let c;
+  try{ const bmp=await createImageBitmap(file,{resizeWidth:w,resizeHeight:h,resizeQuality:'high'});
+    c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(bmp,0,0); if(bmp.close) bmp.close(); }
+  catch(e){ if(dim.w*dim.h>60e6) throw new Error('bilden är för stor för den här webbläsaren – gör den mindre först'); c=resample(dim.img,w,h); }
+  const enc=(cv,qq)=>new Promise((res,rej)=>cv.toBlob(b=>{ if(!b) return rej(new Error('Kunde inte spara bilden')); const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsDataURL(b); },'image/jpeg',qq));
+  // Stay well under the 4 MB a shared photo may take once encrypted: lower the quality, then the size.
+  for(const [m,qq] of [[max,q],[max,.8],[2000,.8],[1600,.78]]){
+    const kk=Math.min(1,m/Math.max(w,h)), cv=kk<1?resample(c,Math.round(w*kk),Math.round(h*kk)):c;
+    const d=await enc(cv,qq); if(d.length<2.6e6||m===1600) return d; }
 }
 
 export { isHeic, isPhotoFile, photoAccept, renderPanel, closeBtn, E, relRow, personPanel, fmtDur, commentsFor, openQuestions, openCount, ago, myName, commentSection, nameColor, addComment, bindComments, voiceRows, voiceSection, bindVoices, voiceEdit, saveVoice, audioDuration, recordModal, mediaSection, bindPanel, bindPersonPanel, placeOptions, personOptions, personByLabel, eventForm, citeLinks, citeForm, shrinkImage };

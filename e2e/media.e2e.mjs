@@ -124,3 +124,19 @@ test('older photos get a sharper thumbnail on this device without changing the d
   });
   expect(r).toEqual({ w: 480, same: true });
 });
+
+test('a very large photo is scaled down without unpacking it on the page', async ({ page }) => {
+  await importExample(page);
+  const r = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 9000; c.height = 6000; const x = c.getContext('2d'); x.fillStyle = '#964'; x.fillRect(0, 0, 9000, 6000); x.fillStyle = '#eee'; x.fillRect(0, 0, 4500, 3000);
+    const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9)); c.width = c.height = 1;
+    let big = 0; const orig = document.createElement.bind(document);
+    document.createElement = (t) => { const el = orig(t); if (t === 'canvas') setTimeout(() => { big = Math.max(big, el.width * el.height); }, 0); return el; };
+    const url = await app.shrinkImage(new File([blob], 'jatte.jpg', { type: 'image/jpeg' }));
+    await new Promise((ok) => setTimeout(ok, 50)); document.createElement = orig;
+    const size = await new Promise((ok) => { const im = new Image(); im.onload = () => ok([im.naturalWidth, im.naturalHeight]); im.src = url; });
+    return { size, big };
+  });
+  expect(r.size).toEqual([2400, 1600]);
+  expect(r.big).toBeLessThanOrEqual(2400 * 1600); // never a 54-megapixel canvas
+});

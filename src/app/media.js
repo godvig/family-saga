@@ -1,12 +1,12 @@
 /* Släktsagan · media.js — Photos and documents: upload, drag and drop, thumbnails, face framing, lightbox. */
-import { BLOB, P, avatarMedia, blobId, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=56';
-import { confirmBox, modal } from './modal.js?v=56';
-import { E, audioDuration, isPhotoFile, photoAccept, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=56';
-import { bindLogs } from './research.js?v=56';
-import { renderAll, select } from './router.js?v=56';
-import { ALL, S, ui } from './state.js?v=56';
-import { Hist, Store } from './store.js?v=56';
-import { $, clone, esc, genitive, toast } from './util.js?v=56';
+import { BLOB, P, avatarMedia, blobId, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=57';
+import { confirmBox, modal } from './modal.js?v=57';
+import { E, audioDuration, isPhotoFile, photoAccept, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=57';
+import { bindLogs } from './research.js?v=57';
+import { renderAll, select } from './router.js?v=57';
+import { ALL, S, ui } from './state.js?v=57';
+import { Hist, Store } from './store.js?v=57';
+import { $, clone, esc, genitive, toast } from './util.js?v=57';
 
 /* ============ Photos straight onto a person ============
    Click the empty photo on a card (on a phone: take a picture or pick one), drop image
@@ -31,6 +31,7 @@ async function uploadMedia(files,{profile}={}){
   const prog=$('#uplprog'); if(prog) prog.innerHTML=`<div class="small muted">Laddar upp ${files.length} fil(er)…</div><div class="progress"><i></i></div>`;
   const added=[]; let i=0;
   for(const file of files){
+    await new Promise(r=>setTimeout(r,0)); // let the page breathe between photos
     try{
       if(E.assets){const r=await E.assets.upload(file); added.push({assetId:r.id,url:r.url,name:file.name,contentType:r.contentType||file.type,caption:''});}
       else{ if(!isPhotoFile(file)) throw new Error('bara bilder kan sparas här'); const url=await shrinkImage(file); const id=await storeBlob(url); const tid=await storeBlob(await makeThumb(url)); added.push({url:'kl:'+id,thumb:'kl:'+tid,tv:2,name:file.name,contentType:'image/jpeg',caption:''}); }
