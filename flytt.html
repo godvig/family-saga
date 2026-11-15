@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Flyttar ditt släktarkiv – Släktsagan</title>
+<link rel="icon" href="favicon.svg">
+<style>
+  body{margin:0;font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;background:#efe4cf;color:#2a2018;display:grid;place-items:center;min-height:100vh}
+  main{max-width:520px;margin:24px;padding:28px;background:#fbf6ec;border:1px solid #d9c9a8;border-radius:16px}
+  h1{font-size:22px;margin:0 0 8px}
+  .bar{height:8px;background:#e6d8bb;border-radius:4px;overflow:hidden;margin:16px 0}
+  .bar i{display:block;height:100%;width:0;background:#2f5d4a;transition:width .2s}
+  .btn{display:inline-block;padding:10px 16px;border-radius:10px;border:1px solid #2f5d4a;background:#2f5d4a;color:#fff;text-decoration:none;font-weight:600;cursor:pointer;font-size:15px}
+  .btn.ghost{background:transparent;color:#2f5d4a}
+  .muted{color:#6d5c48;font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Flyttar ditt släktarkiv…</h1>
+  <p id="msg" class="muted">Väntar på den gamla adressen.</p>
+  <div class="bar"><i id="bar"></i></div>
+  <p id="acts"></p>
+</main>
+<script>
+/* The receiving end of the move from klansagan.godvig.com to saga.godvig.com.
+   A browser keeps saved data per address, so the archive, photos, voice memories and the keys
+   to shared trees can't follow a new address on their own. The page on the old address opens
+   this one and hands everything over with postMessage, inside the browser – nothing passes a server.
+   Only messages from the old address, from the window that opened this one, are accepted. */
+(function(){
+  var FROM = 'https://klansagan.godvig.com';
+  var opener = window.opener, msg = document.getElementById('msg'), bar = document.getElementById('bar'), acts = document.getElementById('acts');
+  var hash = '', total = 0, done = 0, replace = false, db = null;
+  function say(t){ msg.textContent = t; }
+  function finish(ok, t){
+    say(t); bar.style.width = ok ? '100%' : bar.style.width;
+    acts.innerHTML = '<a class="btn" href="./' + (ok ? hash : '') + '">Öppna Släktsagan</a>';
+  }
+  if(!opener){ finish(false, 'Den här sidan används bara när arkivet flyttas från den gamla adressen. Öppna klansagan.godvig.com för att flytta.'); return; }
+
+  function openDb(){ return new Promise(function(ok, bad){ var r = indexedDB.open('klansagan', 2);
+    r.onupgradeneeded = function(){ var d = r.result; ['blobs','archive'].forEach(function(n){ if(!d.objectStoreNames.contains(n)) d.createObjectStore(n); }); };
+    r.onsuccess = function(){ ok(r.result); }; r.onerror = function(){ bad(r.error); }; }); }
+  function get(store, k){ return new Promise(function(ok, bad){ var q = db.transaction(store).objectStore(store).get(k); q.onsuccess = function(){ ok(q.result); }; q.onerror = function(){ bad(q.error); }; }); }
+  function putAll(store, items){ return new Promise(function(ok, bad){ var t = db.transaction(store, 'readwrite'), st = t.objectStore(store);
+    items.forEach(function(it){ st.put(it[1], it[0]); }); t.oncomplete = function(){ ok(); }; t.onerror = function(){ bad(t.error); }; }); }
+  function count(v){ return v && v.persons ? Object.keys(v.persons).length : 0; }
+
+  window.addEventListener('message', function(e){
+    if(e.origin !== FROM || e.source !== opener) return;
+    var m = e.data || {};
+    var reply = function(o){ opener.postMessage(o, FROM); };
+    (async function(){
+      try{
+        if(m.t === 'start'){
+          hash = typeof m.hash === 'string' && /^#[\w.\-]*$/.test(m.hash) ? m.hash : '';
+          total = m.total || 1; db = await openDb();
+          // Never quietly overwrite an archive that is already here.
+          var here = await get('archive', 'klansagan-v1');
+          if(count(here) && m.persons){
+            replace = confirm('Det finns redan ett släktarkiv på den nya adressen med ' + count(here) + ' personer.\n\nOK: ersätt det med arkivet från den gamla adressen (' + m.persons + ' personer).\nAvbryt: behåll det som finns här och flytta bara bilder och delade träd.');
+          } else replace = true;
+          say('Tar emot…'); reply({ t: 'go' });
+        } else if(m.t === 'archive' || m.t === 'blobs'){
+          var items = (m.items || []).filter(function(it){ return Array.isArray(it) && typeof it[0] === 'string'; });
+          if(m.t === 'archive' && !replace){ var keep = []; for(var i = 0; i < items.length; i++){ if(!(await get('archive', items[i][0]))) keep.push(items[i]); } items = keep; }
+          await putAll(m.t, items);
+          done += (m.items || []).length; bar.style.width = Math.min(99, Math.round(100 * done / total)) + '%';
+          say('Tar emot… ' + done + ' av ' + total); reply({ t: 'ack', n: m.n });
+        } else if(m.t === 'local'){
+          var o = m.items || {};
+          Object.keys(o).forEach(function(k){ if(typeof o[k] !== 'string') return; if(replace || localStorage.getItem(k) === null) localStorage.setItem(k, o[k]); });
+          localStorage.setItem('klansagan-moved', new Date().toISOString());
+          reply({ t: 'ack', n: m.n });
+        } else if(m.t === 'done'){
+          finish(true, 'Klart! Ditt släktarkiv, dina bilder och dina delade träd finns nu här på saga.godvig.com. Spara gärna den nya adressen som bokmärke.');
+          reply({ t: 'thanks' });
+        }
+      }catch(err){ reply({ t: 'error', error: String(err && err.message || err) }); finish(false, 'Något gick fel: ' + (err && err.message || err) + '. Ingenting har tagits bort på den gamla adressen – prova igen, eller ta en säkerhetskopia där och läs in den här.'); }
+    })();
+  });
+  opener.postMessage({ t: 'ready' }, FROM);
+})();
+</script>
+</body>
+</html>

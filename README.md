@@ -14,7 +14,7 @@ The interface is in Swedish for now, and it understands Swedish sources (househo
 
 ![Släktsagan demo: clicking through the House of Vasa, the tree glides to each new person, then the relationship calculator lights up how Sigrid and Władysław IV are related](docs/screenshots/demo.gif)
 
-*Click someone and the family rearranges around them; ask how two people are related and the chain lights up in the tree. Try it on the [House of Vasa example](https://klansagan.godvig.com/#exempel).*
+*Click someone and the family rearranges around them; ask how two people are related and the chain lights up in the tree. Try it on the [House of Vasa example](https://saga.godvig.com/#exempel).*
 
 | Fan chart | Relationship calculator | Person card |
 |---|---|---|
@@ -24,7 +24,7 @@ The interface is in Swedish for now, and it understands Swedish sources (househo
 
 ## Live demo
 
-**[Open the example](https://klansagan.godvig.com/#exempel)**: the Swedish royal House of Vasa, from Gustav Vasa (1496) to Queen Christina and Charles X Gustav, with coronations, marriages, places and sources. The example lives in memory only and is never saved. [Open an empty archive](https://klansagan.godvig.com/) to start with your own family.
+**[Open the example](https://saga.godvig.com/#exempel)**: the Swedish royal House of Vasa, from Gustav Vasa (1496) to Queen Christina and Charles X Gustav, with coronations, marriages, places and sources. The example lives in memory only and is never saved. [Open an empty archive](https://saga.godvig.com/) to start with your own family.
 
 ## Quick start
 
@@ -99,6 +99,8 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 
 ```
 vendor/             D3 7.9.0 and topojson-client 3.1.0 (ISC), served from the same origin
+move/               moving saved archives from klansagan.godvig.com to the new address (see move/README.md)
+flytt.html          receiving end of that move
 index.html          markup shell, loads D3 + topojson from vendor/, start-up guard
 src/core.js         pure logic: dates, GEDCOM parsing and dates, kinship terms, views, duplicate scoring, undo history
 src/app/            the UI as ES modules, one per area:
