@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=58';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=58';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=58';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=58';
-import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=58';
-import { Share, askName } from './share.js?v=58';
-import { logSection } from './research.js?v=58';
-import { linkModal } from './start.js?v=58';
-import { ALL, S, ui } from './state.js?v=58';
-import { Hist, Store } from './store.js?v=58';
-import { openCard } from './theme.js?v=58';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=58';
-import { fillNames, hideModal } from './views.js?v=58';
+import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=59';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=59';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=59';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=59';
+import { backPerson, bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=59';
+import { Share, askName } from './share.js?v=59';
+import { logSection } from './research.js?v=59';
+import { linkModal } from './start.js?v=59';
+import { ALL, S, ui } from './state.js?v=59';
+import { Hist, Store } from './store.js?v=59';
+import { openCard } from './theme.js?v=59';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=59';
+import { fillNames, hideModal } from './views.js?v=59';
 
 /* ============ PANEL ============ */
 function renderPanel(){
@@ -44,7 +44,7 @@ function personPanel(p){
   return `<div class="ph"><div class="top">
       ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?avImg(p):`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" multiple accept="${photoAccept()}" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div>`}
       <div style="flex:1;min-width:0"><h3>${fullHtml(p)}</h3>${p.formerNames&&formerNamesText(p)?`<div class="fname">${esc(formerNamesText(p))}</div>`:''}<div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
-      ${closeBtn}</div>
+      ${(()=>{const b=(ui.trail||[]).filter(id=>P(id)&&id!==p.id).pop(); return b?`<button class="iconbtn" data-act="back" title="Tillbaka till ${esc(shortName(P(b)))}" aria-label="Tillbaka till ${esc(shortName(P(b)))}" style="margin-left:auto"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3.5L5 8l4.5 4.5"/></svg></button>${closeBtn.replace(' style="margin-left:auto"','')}`:closeBtn;})()}</div>
     <div class="acts">
       <button class="btn sm" data-act="card">Personkort</button>${ed&&av?'<button class="btn sm" data-act="photo" title="Flytta och zooma bilden så att ansiktet hamnar rätt">Justera bild</button>':''}
       <button class="btn sm" data-act="focus">Visa i trädet</button>
@@ -246,7 +246,8 @@ function bindPersonPanel(p){
     const act=b.dataset.act;
     if(act==='focus'){setFocus(p.id);ui.treeKey=null; if(ui.view!=='trad') location.hash='trad'; else renderAll();}
     if(act==='edit'){ const nt=a('#notes'); if(nt&&nt.value!==(P(p.id).notes||'')){const q=clone(P(p.id)); q.notes=nt.value; Store.put(q,{silent:true});} openPersonModal(P(p.id)); }
-    if(act==='card') openCard(p.id);
+    if(act==='back') backPerson();
+    if(act==='card'){ ui.sel=null; openCard(p.id); } // the card has it all: fold the side panel away
     if(act==='hide') hideModal(p);
     if(act==='rel'){ui.relB=p.id; if(!ui.relA||ui.relA===p.id) ui.relA=(homePerson()&&homePerson().id!==p.id)?homePerson().id:(ui.focus!==p.id?ui.focus:null); location.hash='slaktskap';}
     if(act==='home'&&!p.home) setHome(p.id);

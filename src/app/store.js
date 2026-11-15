@@ -1,11 +1,11 @@
 /* Släktsagan · store.js — Saving and loading: undo/redo history, IndexedDB/localStorage, the artifact database, photos and voice memories as blobs. */
-import { Backup, Unpub } from './backup.js?v=58';
-import { purgeLegacyDemo } from './demo.js?v=58';
-import { IDB, P, backfillThumbs, fullName, migrateInline } from './domain.js?v=58';
-import { renderAll } from './router.js?v=58';
-import { Share } from './share.js?v=58';
-import { ALL, COLS, KIND, applyView, archiveData, cols, ui } from './state.js?v=58';
-import { $, clone, toast } from './util.js?v=58';
+import { Backup, Unpub } from './backup.js?v=59';
+import { purgeLegacyDemo } from './demo.js?v=59';
+import { IDB, P, backfillThumbs, fullName, migrateInline } from './domain.js?v=59';
+import { renderAll } from './router.js?v=59';
+import { Share } from './share.js?v=59';
+import { ALL, COLS, KIND, applyView, archiveData, cols, ui } from './state.js?v=59';
+import { $, clone, toast } from './util.js?v=59';
 
 /* ============ Store ============ */
 /* ============ Undo / redo ============

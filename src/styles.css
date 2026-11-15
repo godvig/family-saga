@@ -324,6 +324,8 @@ table.list{width:100%;border-collapse:collapse;background:var(--card);border:1px
 
 /* Person card page */
 .pc{max-width:980px;margin:0 auto;padding:28px 28px 60px}
+.pc-back{margin-bottom:14px}
+@media print{.pc-back{display:none}}
 .pc-head{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center;padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:22px}
 .pc-photo{width:150px;height:150px;border-radius:50%;overflow:hidden;background:var(--paper2);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:48px;color:var(--ink3);border:4px solid var(--card);box-shadow:0 0 0 2px var(--line2),var(--shadow)}
 .pc-photo img{width:100%;height:100%;object-fit:cover}

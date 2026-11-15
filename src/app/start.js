@@ -1,18 +1,18 @@
 /* Släktsagan · start.js — The start page, the presentation page and separate trees. */
-import { demoActive } from './demo.js?v=58';
-import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=58';
-import { findDups, mergePersons } from './dups.js?v=58';
-import { confirmBox, modal } from './modal.js?v=58';
-import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=58';
-import { PWA } from './pwa.js?v=58';
-import { bindOpenSearches, openSearchesHTML } from './research.js?v=58';
-import { Share } from './share.js?v=58';
-import { renderAll, setFocus } from './router.js?v=58';
-import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=58';
-import { Store } from './store.js?v=58';
-import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=58';
-import { $, clone, esc, toast, yearOf } from './util.js?v=58';
-import { fillNames } from './views.js?v=58';
+import { demoActive } from './demo.js?v=59';
+import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=59';
+import { findDups, mergePersons } from './dups.js?v=59';
+import { confirmBox, modal } from './modal.js?v=59';
+import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=59';
+import { PWA } from './pwa.js?v=59';
+import { bindOpenSearches, openSearchesHTML } from './research.js?v=59';
+import { Share } from './share.js?v=59';
+import { renderAll, setFocus } from './router.js?v=59';
+import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=59';
+import { Store } from './store.js?v=59';
+import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=59';
+import { $, clone, esc, toast, yearOf } from './util.js?v=59';
+import { fillNames } from './views.js?v=59';
 
 /* ============ START ============ */
 function heroArt(){

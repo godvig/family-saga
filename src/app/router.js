@@ -1,22 +1,22 @@
 /* Släktsagan · router.js — Hash routing, renderAll and the empty state. */
-import { renderCard } from './card.js?v=58';
-import { loadDemo, updateDemoBar } from './demo.js?v=58';
-import { P, homePerson } from './domain.js?v=58';
-import { renderDups } from './dups.js?v=58';
-import { renderFan } from './fan.js?v=58';
-import { renderImport } from './importexport.js?v=58';
-import { mapState, renderMap } from './map.js?v=58';
-import { renderPanel } from './panel.js?v=58';
-import { renderPersons } from './persons.js?v=58';
-import { renderSources } from './places.js?v=58';
-import { renderRel } from './relationship.js?v=58';
-import { renderAbout, renderStart } from './start.js?v=58';
-import { ALL, APP_VERSION, S, activeView, applyView, ui } from './state.js?v=58';
-import { Store, updateUndoBtns } from './store.js?v=58';
-import { renderTimeline } from './timeline.js?v=58';
-import { reachInLockedTree, renderTree } from './tree.js?v=58';
-import { $, esc, toast } from './util.js?v=58';
-import { updateViewBtn } from './views.js?v=58';
+import { renderCard } from './card.js?v=59';
+import { loadDemo, updateDemoBar } from './demo.js?v=59';
+import { P, homePerson } from './domain.js?v=59';
+import { renderDups } from './dups.js?v=59';
+import { renderFan } from './fan.js?v=59';
+import { renderImport } from './importexport.js?v=59';
+import { mapState, renderMap } from './map.js?v=59';
+import { renderPanel } from './panel.js?v=59';
+import { renderPersons } from './persons.js?v=59';
+import { renderSources } from './places.js?v=59';
+import { renderRel } from './relationship.js?v=59';
+import { renderAbout, renderStart } from './start.js?v=59';
+import { ALL, APP_VERSION, S, activeView, applyView, ui } from './state.js?v=59';
+import { Store, updateUndoBtns } from './store.js?v=59';
+import { renderTimeline } from './timeline.js?v=59';
+import { reachInLockedTree, renderTree } from './tree.js?v=59';
+import { $, esc, toast } from './util.js?v=59';
+import { updateViewBtn } from './views.js?v=59';
 
 /* ============ Router ============ */
 const VIEWS={om:renderAbout,start:renderStart,trad:renderTree,solfjader:renderFan,personer:renderPersons,slaktskap:renderRel,personkort:renderCard,dubbletter:renderDups,tidslinje:renderTimeline,karta:renderMap,kallor:renderSources,import:renderImport};
@@ -66,7 +66,12 @@ function bindSheet(pn){
     else if(dy>30){ if(pn.classList.contains('expanded')) setExp(false); else if(!pn.classList.contains('mini')) {pn.classList.add('mini'); lbl();} else select(null); } };
   const top=pn.querySelector('.ph .top h3'); if(top) top.onclick=()=>{ if(matchMedia('(max-width:700px)').matches&&!pn.classList.contains('expanded')) setExp(true); };
 }
-function select(type,id){ui.sel=id?{type,id}:null; renderAll();}
+/* The people looked at in the side panel, oldest first, so "back" can return to the one before. */
+function select(type,id){ const cur=ui.sel&&ui.sel.type==='person'?ui.sel.id:null; ui.trail=ui.trail||[];
+  if(cur&&type==='person'&&id&&id!==cur&&!ui.goingBack){ ui.trail.push(cur); if(ui.trail.length>50) ui.trail.shift(); }
+  ui.sel=id?{type,id}:null; renderAll();}
+function backPerson(){ ui.trail=(ui.trail||[]).filter(id=>P(id)); const id=ui.trail.pop(); if(!id) return;
+  ui.goingBack=true; try{ followPerson(id); } finally{ ui.goingBack=false; } }
 function showPerson(id,{focus}={}){if(focus) setFocus(id); select('person',id);}
 /* Clicking a name in the side panel moves the current view to that person. */
 function followPerson(id){
@@ -93,4 +98,4 @@ function emptyState(){
     </div></div>`;
 }
 
-export { VIEWS, NAVMAP, updateMoreBtn, route, lastView, renderAll, followSelection, setFocus, sheetMini, bindSheet, select, showPerson, followPerson, emptyState };
+export { VIEWS, NAVMAP, updateMoreBtn, route, lastView, renderAll, followSelection, setFocus, sheetMini, bindSheet, select, showPerson, followPerson, emptyState, backPerson };

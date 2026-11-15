@@ -4,13 +4,13 @@
 
    Entries are their own documents ({kind:'log'}) like comments, so two people logging at the
    same time merge without losing anything. In a shared tree they are only for editors. */
-import { P, shortName } from './domain.js?v=58';
-import { myName } from './panel.js?v=58';
-import { renderAll, select, setFocus } from './router.js?v=58';
-import { Share } from './share.js?v=58';
-import { ALL, S, ui } from './state.js?v=58';
-import { Hist, Store } from './store.js?v=58';
-import { clone, esc, fmtDate, toast, uid, localDay } from './util.js?v=58';
+import { P, shortName } from './domain.js?v=59';
+import { myName } from './panel.js?v=59';
+import { renderAll, select, setFocus } from './router.js?v=59';
+import { Share } from './share.js?v=59';
+import { ALL, S, ui } from './state.js?v=59';
+import { Hist, Store } from './store.js?v=59';
+import { clone, esc, fmtDate, toast, uid, localDay } from './util.js?v=59';
 
 const RESULT = {
   todo: { icon: '🔎', label: 'Att leta', hint: 'planerat' },

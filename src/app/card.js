@@ -1,14 +1,14 @@
 /* Släktsagan · card.js — The person card page. */
-import { P, bestUrl, formerNamesText, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings } from './domain.js?v=58';
-import { openLightbox } from './media.js?v=58';
-import { openPersonModal } from './modal.js?v=58';
-import { bindVoices, citeLinks, voiceRows } from './panel.js?v=58';
-import { personPdf } from './print.js?v=58';
-import { emptyState, setFocus } from './router.js?v=58';
-import { S, ui } from './state.js?v=58';
-import { Store } from './store.js?v=58';
-import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=58';
-import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=58';
+import { P, bestUrl, formerNamesText, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings } from './domain.js?v=59';
+import { openLightbox } from './media.js?v=59';
+import { openPersonModal } from './modal.js?v=59';
+import { bindVoices, citeLinks, voiceRows } from './panel.js?v=59';
+import { personPdf } from './print.js?v=59';
+import { emptyState, setFocus } from './router.js?v=59';
+import { S, ui } from './state.js?v=59';
+import { Store } from './store.js?v=59';
+import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=59';
+import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=59';
 
 /* ============ PERSON CARD ============ */
 function storyOf(p){
@@ -58,6 +58,7 @@ function renderCard(){
   const evs=lifeEvents(p); const by=yearOf(p.birthDate);
   const story=storyOf(p);
   v.innerHTML=`<div class="pc">
+    ${(()=>{const b=history.state&&history.state.cardId===p.id&&P(history.state.prev); return b?`<button class="btn sm pc-back" data-pc="back">← Tillbaka till ${esc(shortName(b))}</button>`:'';})()}
     <div class="pc-head"><div class="pc-photo" style="box-shadow:0 0 0 2px ${sexColor(p)},var(--shadow)">${av?avImg(p):esc(initials(p))}</div>
       <div><h1>${esc(fullName(p))}</h1>${formerNamesText(p)?`<div class="fname">${esc(formerNamesText(p))}</div>`:''}<div class="life">${esc([p.birthDate?'* '+fmtDate(p.birthDate):'',p.deathDate?'† '+fmtDate(p.deathDate):''].filter(Boolean).join('   '))}${p.occupation?`<br>${esc(p.occupation)}`:''}</div>
       <div class="acts">${Store.canEdit?'<button class="btn" data-pc="edit">Redigera</button>':''}<button class="btn" data-pc="tree">Visa i trädet</button><button class="btn" data-pc="fan">Solfjäder</button><button class="btn" data-pc="rel">Hur är vi släkt?</button><button class="btn" data-pc="pdf">⎙ Skriv ut / PDF</button></div></div></div>
@@ -79,7 +80,7 @@ function renderCard(){
   bindChips(v,openCard);
   v.querySelectorAll('[data-img]').forEach(el=>{el.onclick=()=>{ui.sel={type:'person',id:p.id}; openLightbox(p,+el.dataset.img);}; el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault(); el.onclick();}};});
   bindVoices(v,p);
-  v.querySelectorAll('[data-pc]').forEach(b=>b.onclick=()=>{const a=b.dataset.pc;
+  v.querySelectorAll('[data-pc]').forEach(b=>b.onclick=()=>{const a=b.dataset.pc; if(a==='back'){history.back(); return;}
     if(a==='edit') openPersonModal(p);
     if(a==='tree'){setFocus(p.id); ui.treeKey=null; location.hash='trad';}
     if(a==='fan'){setFocus(p.id); ui.fanKey=null; location.hash='solfjader';}

@@ -1,12 +1,12 @@
 /* Släktsagan · theme.js — Themes, text size, simple mode and settings. */
-import { P, avImg, avatarUrl, fullName, homePerson, initials, lifespan, personLabel, setHome, sexColor } from './domain.js?v=58';
-import { mapState } from './map.js?v=58';
-import { modal } from './modal.js?v=58';
-import { personByLabel } from './panel.js?v=58';
-import { PWA } from './pwa.js?v=58';
-import { renderAll, setFocus } from './router.js?v=58';
-import { APP_VERSION, S, ui } from './state.js?v=58';
-import { $, esc, toast } from './util.js?v=58';
+import { P, avImg, avatarUrl, fullName, homePerson, initials, lifespan, personLabel, setHome, sexColor } from './domain.js?v=59';
+import { mapState } from './map.js?v=59';
+import { modal } from './modal.js?v=59';
+import { personByLabel } from './panel.js?v=59';
+import { PWA } from './pwa.js?v=59';
+import { renderAll, setFocus } from './router.js?v=59';
+import { APP_VERSION, S, ui } from './state.js?v=59';
+import { $, esc, toast } from './util.js?v=59';
 
 /* ============ Theme ============ */
 const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -58,8 +58,15 @@ const numw=n=>NUMW[n]||String(n);
 function listJoin(a){return a.length<2?a.join(''):a.slice(0,-1).join(', ')+' och '+a[a.length-1];}
 function chipHTML(p,extra=''){const av=avatarUrl(p); return `<div class="pchip" data-card="${p.id}"><div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div><div class="t"><b>${esc(fullName(p))}</b><span>${esc(lifespan(p))}${extra?' · '+extra:''}</span></div></div>`;}
 function bindChips(root,fn){root.querySelectorAll('[data-card]').forEach(el=>el.onclick=()=>fn(el.dataset.card));}
-function openCard(id){ui.cardId=id; if(location.hash!=='#personkort') location.hash='personkort'; else renderAll(true);}
+/* Each person opened on the card page gets a history entry of their own, so the browser's and the
+   phone's back button – and the card's own "Tillbaka" – step back through the people looked at. */
+function openCard(id){ const was=location.hash==='#personkort'?ui.cardId:null; ui.cardId=id;
+  try{ if(was===null){ location.hash='personkort'; history.replaceState({cardId:id},''); }
+    else if(was!==id){ if(!history.state||!history.state.cardId) history.replaceState({cardId:was,prev:history.state&&history.state.prev},''); history.pushState({cardId:id,prev:was},''); renderAll(true); scrollTo(0,0); const v=document.getElementById('view'); if(v) v.scrollTop=0; }
+    else renderAll(true);
+  }catch(e){ if(location.hash!=='#personkort') location.hash='personkort'; else renderAll(true); } }
+function cardPopState(e){ const st=e.state; if(!st||!st.cardId||!P(st.cardId)) return; ui.cardId=st.cardId; if(ui.view==='personkort'&&location.hash==='#personkort') renderAll(true); }
 function personPicker(id,value,ph){return `<input class="t" id="${id}" list="dlAllP" value="${esc(value&&P(value)?personLabel(P(value)):'')}" placeholder="${ph}">`;}
 function allPersonsDatalist(){return `<datalist id="dlAllP">${Object.values(S.persons).map(x=>`<option value="${esc(personLabel(x))}">`).join('')}</datalist>`;}
 
-export { cssv, currentTheme, themeName, applySize, applyTheme, applySimple, settingsModal, NUMW, numw, listJoin, chipHTML, bindChips, openCard, personPicker, allPersonsDatalist };
+export { cssv, currentTheme, themeName, applySize, applyTheme, applySimple, settingsModal, NUMW, numw, listJoin, chipHTML, bindChips, openCard, cardPopState, personPicker, allPersonsDatalist };
