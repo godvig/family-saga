@@ -802,6 +802,11 @@ body.dragging-files #view::after{content:'Släpp bilden på en person';position:
 .news-rm{margin:14px 0 0}
 #treeSvg .newbadge rect{fill:var(--accent)}
 #treeSvg .newbadge text{fill:#fff;font-size:9.5px;font-weight:700;letter-spacing:.02em}
+#treeSvg .morebadge{cursor:pointer}
+#treeSvg .morebadge rect{fill:var(--card);stroke:var(--ink3);stroke-width:1}
+#treeSvg .morebadge text{fill:var(--ink2);font-size:9.5px;font-weight:700}
+#treeSvg .morebadge:hover rect{fill:var(--accent)}
+#treeSvg .morebadge:hover text{fill:#fff}
 
 /* Relationship as one chain (phones, and "Som kedja" over the tree) */
 .rel-chain{list-style:none;margin:16px auto 0;padding:0;max-width:420px;display:flex;flex-direction:column;align-items:stretch}
