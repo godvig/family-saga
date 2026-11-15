@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=57';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=57';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=57';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=57';
-import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=57';
-import { Share, askName } from './share.js?v=57';
-import { logSection } from './research.js?v=57';
-import { linkModal } from './start.js?v=57';
-import { ALL, S, ui } from './state.js?v=57';
-import { Hist, Store } from './store.js?v=57';
-import { openCard } from './theme.js?v=57';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=57';
-import { fillNames, hideModal } from './views.js?v=57';
+import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=58';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=58';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=58';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=58';
+import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=58';
+import { Share, askName } from './share.js?v=58';
+import { logSection } from './research.js?v=58';
+import { linkModal } from './start.js?v=58';
+import { ALL, S, ui } from './state.js?v=58';
+import { Hist, Store } from './store.js?v=58';
+import { openCard } from './theme.js?v=58';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=58';
+import { fillNames, hideModal } from './views.js?v=58';
 
 /* ============ PANEL ============ */
 function renderPanel(){
@@ -42,7 +42,7 @@ function personPanel(p){
   const cites=p.citations||[];
   const aboutLabel=a=>{if(!a) return 'Allmänt'; if(a.startsWith('event:')){const e=(p.events||[]).find(e=>'event:'+e.id===a); return e?e.type+(e.date?' '+e.date:''):'Händelse';} return a;};
   return `<div class="ph"><div class="top">
-      ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?avImg(p):`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" accept="${photoAccept()}" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div>`}
+      ${ed?`<label class="avatar clickable" style="border-color:${sexColor(p)}" title="${av?'Byt profilbild':'Lägg till profilbild'}">${av?avImg(p):`<span>${esc(initials(p))}</span>`}<input type="file" id="uplAv" multiple accept="${photoAccept()}" hidden></label>`:`<div class="avatar" style="border-color:${sexColor(p)}">${av?avImg(p):esc(initials(p))}</div>`}
       <div style="flex:1;min-width:0"><h3>${fullHtml(p)}</h3>${p.formerNames&&formerNamesText(p)?`<div class="fname">${esc(formerNamesText(p))}</div>`:''}<div class="sub">${esc(lifespan(p))}${age!=null?` · ${age} år`:''}${p.occupation?` · ${esc(p.occupation)}`:''}</div></div>
       ${closeBtn}</div>
     <div class="acts">

@@ -1,18 +1,18 @@
 /* Släktsagan · tree.js — The family tree: layout, drawing, animation and the kinship highlight. */
-import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=57';
-import { pickImageFor } from './media.js?v=57';
-import { openPersonModal } from './modal.js?v=57';
-import { openCount } from './panel.js?v=57';
-import { printChart } from './print.js?v=57';
-import { relChainSheet, relation } from './relationship.js?v=57';
-import { emptyState, renderAll, select, setFocus } from './router.js?v=57';
-import { linkModal, treeOf, trees } from './start.js?v=57';
-import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=57';
-import { Store } from './store.js?v=57';
-import { themeName } from './theme.js?v=57';
-import { $, esc, toast } from './util.js?v=57';
-import { hideModal } from './views.js?v=57';
-import { Share } from './share.js?v=57';
+import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=58';
+import { pickImageFor } from './media.js?v=58';
+import { openPersonModal } from './modal.js?v=58';
+import { openCount } from './panel.js?v=58';
+import { printChart } from './print.js?v=58';
+import { relChainSheet, relation } from './relationship.js?v=58';
+import { emptyState, renderAll, select, setFocus } from './router.js?v=58';
+import { linkModal, treeOf, trees } from './start.js?v=58';
+import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=58';
+import { Store } from './store.js?v=58';
+import { themeName } from './theme.js?v=58';
+import { $, esc, toast } from './util.js?v=58';
+import { hideModal } from './views.js?v=58';
+import { Share } from './share.js?v=58';
 
 /* ============ TREE ============ */
 const KIN_LEVELS=['Inga','Syskon','Kusiner','Sysslingar','Tremänningar','Fyrmänningar','Femmänningar','Sexmänningar','Sjumänningar','Åttamänningar','Niomänningar'];
@@ -247,7 +247,7 @@ function renderTree(fresh){
     $('#tAnc').onchange=e=>{ui.ancGen=+e.target.value;ui.treeKey=null;renderTree();};
     $('#tDesc').onchange=e=>{ui.descGen=+e.target.value;ui.treeKey=null;renderTree();};
     $('#tKin').onchange=e=>{ui.kinDeg=+e.target.value;ui.treeKey=null;renderTree();};
-    $('#tFit').onclick=()=>{ui.treeKey=null;renderTree();};
+    $('#tFit').onclick=()=>{ui.treeKey=null; ui.treeFitAll=true; renderTree();};
     $('#tSp').onchange=e=>{ui.showPartners=e.target.checked; try{localStorage.setItem('sa-partners',e.target.checked?'1':'0');}catch(err){} ui.treeKey=null;renderTree();};
     $('#tSize').onchange=e=>{ui.cardSize=e.target.value;ui.treeKey=null;renderTree();};
     $('#tMe').onclick=()=>{const h=homePerson(); if(!h){toast('Välj vem du är under Inställningar eller med ”Det här är jag” på ditt personkort.',5000);return;} treeGoTo(h.id);};
@@ -257,7 +257,7 @@ function renderTree(fresh){
     $('#tLock').onclick=()=>{ui.treeLock=!ui.treeLock; toast(ui.treeLock?'Trädet är låst. Klicka på vem du vill och läs – trädet står kvar.':'Trädet är upplåst. Ett klick på en person bygger om trädet kring den personen.',4500); renderTree();};
     $('#tPrint').onclick=()=>printChart($('#treeSvg'),'Släktträd för '+fullName(P(ui.focus)),'slaktsagan-tree',{book:true});
     const svg=d3.select('#treeSvg');
-    treeZoom=d3.zoom().scaleExtent([.15,2.5]).on('zoom',e=>svg.select('g.vp').attr('transform',e.transform));
+    treeZoom=d3.zoom().scaleExtent([.04,2.5]).on('zoom',e=>svg.select('g.vp').attr('transform',e.transform));
     svg.call(treeZoom).on('dblclick.zoom',null);
     ui.treeKey=null;
   }
@@ -442,7 +442,10 @@ function renderTree(fresh){
     const x0=Math.min(...xs)-CW/2-30,x1=Math.max(...xs)+CW/2+30,y0=Math.min(...ys)-CH/2-40,y1=Math.max(...ys)+CH/2+30;
     let k=Math.min(1.05,Math.min(W/(x1-x0),(H-60)/(y1-y0)));
     let cx=(x0+x1)/2, cy=(y0+y1)/2;
-    if(HL) k=Math.max(k,W<700?.16:.3);
+    // "Visa hela" means all of it, however small the cards get; a first view stays readable
+    const all=ui.treeFitAll; ui.treeFitAll=false;
+    if(all) k=Math.max(k,.04);
+    else if(HL) k=Math.max(k,W<700?.16:.3);
     else if(k<(ui.simple?.85:.6)){k=ui.simple?.85:.6; cx=Math.max(x0+W/(2*k),Math.min(x1-W/(2*k),CW)); cy=Math.max(y0+(H-60)/(2*k),Math.min(y1-(H-60)/(2*k),0));}
     const t=d3.zoomIdentity.translate(W/2-k*cx,(H+50)/2-k*cy).scale(k);
     svg.transition().duration(fresh?0:450).call(treeZoom.transform,t);

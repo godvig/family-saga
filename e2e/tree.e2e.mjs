@@ -72,3 +72,20 @@ test("a woman's husband sits to her left in side branches", async ({ page }) => 
   });
   expect(r).toBe(true);
 });
+
+test('"Visa hela" fits every card into the view, however wide the tree', async ({ page }) => {
+  await example(page);
+  await page.selectOption('#tAnc', { index: (await page.locator('#tAnc option').count()) - 1 });
+  await page.selectOption('#tKin', { index: (await page.locator('#tKin option').count()) - 1 });
+  await page.click('#tFit');
+  await page.waitForTimeout(700);
+  const r = await page.evaluate(() => {
+    const s = document.querySelector('#treeSvg').getBoundingClientRect();
+    const cs = [...document.querySelectorAll('#treeSvg g.card rect.bg')].map((e) => e.getBoundingClientRect());
+    return { s, l: Math.min(...cs.map((c) => c.left)), r: Math.max(...cs.map((c) => c.right)), t: Math.min(...cs.map((c) => c.top)), b: Math.max(...cs.map((c) => c.bottom)) };
+  });
+  expect(r.l).toBeGreaterThanOrEqual(r.s.left - 1);
+  expect(r.r).toBeLessThanOrEqual(r.s.right + 1);
+  expect(r.t).toBeGreaterThanOrEqual(r.s.top - 1);
+  expect(r.b).toBeLessThanOrEqual(r.s.bottom + 1);
+});

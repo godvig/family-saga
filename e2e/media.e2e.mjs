@@ -140,3 +140,19 @@ test('a very large photo is scaled down without unpacking it on the page', async
   expect(r.size).toEqual([2400, 1600]);
   expect(r.big).toBeLessThanOrEqual(2400 * 1600); // never a 54-megapixel canvas
 });
+
+test('several photos can be picked at once, and the photo adjuster takes a new photo', async ({ page }) => {
+  await importExample(page);
+  const pid = await page.evaluate(() => { const p = Object.values(app.ALL.persons).find((q) => !(q.media || []).length); location.hash = 'trad'; app.select('person', p.id); return p.id; });
+  const buf = Buffer.from((await jpeg(page)).split(',')[1], 'base64');
+  await page.locator('#uplAv').setInputFiles([1, 2, 3].map((i) => ({ name: `bild${i}.jpg`, mimeType: 'image/jpeg', buffer: buf })));
+  await expect.poll(() => page.evaluate((pid) => (app.P(pid).media || []).length, pid), { timeout: 15000 }).toBe(3);
+  expect(await page.evaluate((pid) => app.P(pid).media.filter((m) => m.profile).map((m) => m.name), pid)).toEqual(['bild1.jpg']);
+  await page.locator('#panel [data-act="photo"]').click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.click('#cropNew');
+  await (await chooser).setFiles({ name: 'ny.jpg', mimeType: 'image/jpeg', buffer: buf });
+  await expect.poll(() => page.evaluate((pid) => app.P(pid).media.filter((m) => m.profile).map((m) => m.name), pid), { timeout: 15000 }).toEqual(['ny.jpg']);
+  await expect(page.locator('#cropBox')).toBeVisible(); // reopened on the new photo
+  expect(await page.evaluate((pid) => app.P(pid).media.length, pid)).toBe(4); // the old ones are kept
+});

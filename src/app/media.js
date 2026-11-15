@@ -1,19 +1,19 @@
 /* Släktsagan · media.js — Photos and documents: upload, drag and drop, thumbnails, face framing, lightbox. */
-import { BLOB, P, avatarMedia, blobId, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=57';
-import { confirmBox, modal } from './modal.js?v=57';
-import { E, audioDuration, isPhotoFile, photoAccept, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=57';
-import { bindLogs } from './research.js?v=57';
-import { renderAll, select } from './router.js?v=57';
-import { ALL, S, ui } from './state.js?v=57';
-import { Hist, Store } from './store.js?v=57';
-import { $, clone, esc, genitive, toast } from './util.js?v=57';
+import { BLOB, P, avatarMedia, blobId, avatarUrl, blobUrl, cropPct, fullName, isAudio, isImg, makeThumb, murl, shortName, storeBlob, thumbUrl } from './domain.js?v=58';
+import { confirmBox, modal } from './modal.js?v=58';
+import { E, audioDuration, isPhotoFile, photoAccept, bindComments, bindVoices, recordModal, saveVoice, shrinkImage, voiceRows } from './panel.js?v=58';
+import { bindLogs } from './research.js?v=58';
+import { renderAll, select } from './router.js?v=58';
+import { ALL, S, ui } from './state.js?v=58';
+import { Hist, Store } from './store.js?v=58';
+import { $, clone, esc, genitive, toast } from './util.js?v=58';
 
 /* ============ Photos straight onto a person ============
    Click the empty photo on a card (on a phone: take a picture or pick one), drop image
    files on a card or the person panel, or paste an image while a person is selected. */
 function pickImageFor(pid){
   // created and clicked inside the click handler itself, so phones allow it and offer the camera
-  const inp=document.createElement('input'); inp.type='file'; inp.accept=photoAccept();
+  const inp=document.createElement('input'); inp.type='file'; inp.accept=photoAccept(); inp.multiple=true;
   inp.onchange=()=>{ if(inp.files&&inp.files.length) photoTo(pid,inp.files); };
   inp.click();
 }
@@ -25,7 +25,7 @@ async function photoTo(pid,files){
   await uploadMedia(imgs,{profile:!had});
   if(had) toast(`Bilden lades till bland ${genitive(shortName(p))} bilder.`,4000); // a new profile photo shows itself (and its framing toast)
 }
-async function uploadMedia(files,{profile}={}){
+async function uploadMedia(files,{profile,frame=true}={}){
   Hist.label(files.length>1?`Uppladdning av ${files.length} filer`:'Uppladdning av '+(files[0]&&files[0].name||'bild'),6000);
   files=[...files]; if(!files.length) return;
   const prog=$('#uplprog'); if(prog) prog.innerHTML=`<div class="small muted">Laddar upp ${files.length} fil(er)…</div><div class="progress"><i></i></div>`;
@@ -43,7 +43,7 @@ async function uploadMedia(files,{profile}={}){
   const hasProfile=cur.media.some(m=>m.profile);
   if(profile||(!hasProfile&&!cur.media.some(isImg))){ const first=added.find(isImg); if(first){cur.media.forEach(m=>delete m.profile); first.profile=true;} }
   cur.media=cur.media.concat(added); await Store.put(cur);
-  if(cur.kind==='person'&&added.some(m=>m.profile)) autoFrame(cur.id);
+  if(frame&&cur.kind==='person'&&added.some(m=>m.profile)) autoFrame(cur.id);
 }
 /* ---- Face framing ---- */
 function loadImg(url){return new Promise((ok,bad)=>{const i=new Image(); if(!/^data:|^blob:/.test(url)) i.crossOrigin='anonymous'; i.onload=()=>ok(i); i.onerror=()=>bad(new Error('bilden kunde inte läsas')); i.src=url;});}
@@ -70,7 +70,7 @@ async function autoFrame(pid){
     toast(frame?'Bilden är centrerad på ansiktet.':'Hittade inget ansikte. Du kan flytta bilden själv.',5000,{label:'Justera',fn:()=>photoModal(pid)});
   }catch(e){toast('Bilden är sparad. Vill du flytta den?',5000,{label:'Justera',fn:()=>photoModal(pid)});}
 }
-function photoModal(pid){
+function photoModal(pid,{auto=false}={}){
   const p=P(pid), m=p&&avatarMedia(p); if(!m) return;
   const W=240,H=320; let f=Object.assign({x:.5,y:.35,z:1},m.focus||{});
   modal(`<h3>Justera bilden</h3>
@@ -78,7 +78,7 @@ function photoModal(pid){
     <div class="cropwrap"><div class="cropbox" id="cropBox" style="width:${W}px;height:${H}px"><img id="cropImg" src="${esc(murl(m))}" alt="" draggable="false"></div>
       <div class="cropside"><div class="avatar" id="cropCircle" style="width:96px;height:96px;position:relative"><img src="${esc(murl(m))}" alt=""></div><span class="muted small">Så blir den runda bilden</span>
       <label class="f" style="width:100%"><span>Zoom</span><input type="range" id="cropZ" min="1" max="6" step="0.01" value="${f.z}"></label>
-      <button class="btn" id="cropAuto">✨ Hitta ansiktet automatiskt</button><span class="muted small" id="cropMsg"></span></div></div>
+      <button class="btn" id="cropAuto">✨ Hitta ansiktet automatiskt</button><button class="btn" id="cropNew" title="Ladda upp en annan bild som profilbild. Den gamla finns kvar bland bilderna.">📷 Ny bild</button><span class="muted small" id="cropMsg"></span></div></div>
     <div class="foot"><button class="btn" data-x>Avbryt</button><button class="btn primary" data-ok>Spara</button></div>`,
   async(ov,close)=>{
     const q=x=>ov.querySelector(x), img=q('#cropImg'), circ=q('#cropCircle img');
@@ -98,6 +98,12 @@ function photoModal(pid){
       try{const r=await findFrame(murl(m)); if(r.frame){f=r.frame; draw(); msg.textContent='Klart!';} else msg.textContent='Hittade inget ansikte – flytta bilden själv.';}
       catch(e){msg.textContent='Det gick inte att söka efter ansikten här.';}};
     q('[data-x]').onclick=close;
+    // a new profile photo straight from here: upload, then reopen on the new photo and look for the face
+    q('#cropNew').onclick=()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept=photoAccept();
+      inp.onchange=async()=>{ if(!inp.files||!inp.files.length) return; const msg=q('#cropMsg'); msg.textContent='Laddar upp…';
+        select('person',pid); await uploadMedia([...inp.files].slice(0,1),{profile:true,frame:false}); close(); photoModal(pid,{auto:true}); };
+      inp.click(); };
+    if(auto) q('#cropAuto').click();
     q('[data-ok]').onclick=async()=>{const pq=clone(P(pid)), mm=avatarMedia(pq); if(mm){mm.focus={x:+f.x.toFixed(4),y:+f.y.toFixed(4),z:+f.z.toFixed(3),nw:f.nw,nh:f.nh}; await Store.put(pq);} close(); ui.treeKey=null; renderAll(true);};
   });
 }
