@@ -1,9 +1,9 @@
 /* Släktsagan · demo.js — The House of Vasa example (in memory only). */
-import { mapState } from './map.js?v=55';
-import { VIEWS, renderAll } from './router.js?v=55';
-import { ALL, applyView, archiveData, ui } from './state.js?v=55';
-import { Hist, Store } from './store.js?v=55';
-import { $, clone, toast, uid } from './util.js?v=55';
+import { mapState } from './map.js?v=56';
+import { VIEWS, renderAll } from './router.js?v=56';
+import { ALL, applyView, archiveData, ui } from './state.js?v=56';
+import { Hist, Store } from './store.js?v=56';
+import { $, clone, toast, uid } from './util.js?v=56';
 
 /* ============ Demo ============ */
 function demoData(){

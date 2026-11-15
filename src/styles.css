@@ -850,3 +850,7 @@ body.dragging-files #view::after{content:'Släpp bilden på en person';position:
 .fnames .lab{display:block;margin-bottom:4px}
 .fn-row{display:grid;grid-template-columns:1fr 1fr auto auto;gap:6px;margin-bottom:6px;align-items:center}
 @media (max-width:700px){.fn-row{grid-template-columns:1fr 1fr}.fn-row select{grid-column:1}}
+
+/* Static intro in index.html for search engines and slow starts; replaced when the app renders. */
+.boot-intro{max-width:40rem;margin:3rem auto;padding:0 1.25rem;opacity:.75}
+.boot-intro h1{margin:0 0 .5rem}

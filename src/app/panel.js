@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=55';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=55';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=55';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=55';
-import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=55';
-import { Share, askName } from './share.js?v=55';
-import { logSection } from './research.js?v=55';
-import { linkModal } from './start.js?v=55';
-import { ALL, S, ui } from './state.js?v=55';
-import { Hist, Store } from './store.js?v=55';
-import { openCard } from './theme.js?v=55';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=55';
-import { fillNames, hideModal } from './views.js?v=55';
+import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=56';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=56';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=56';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=56';
+import { bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=56';
+import { Share, askName } from './share.js?v=56';
+import { logSection } from './research.js?v=56';
+import { linkModal } from './start.js?v=56';
+import { ALL, S, ui } from './state.js?v=56';
+import { Hist, Store } from './store.js?v=56';
+import { openCard } from './theme.js?v=56';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=56';
+import { fillNames, hideModal } from './views.js?v=56';
 
 /* ============ PANEL ============ */
 function renderPanel(){

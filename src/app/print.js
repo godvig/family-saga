@@ -1,13 +1,13 @@
 /* Släktsagan · print.js — Printing and PDF/PNG export. */
-import { storyOf } from './card.js?v=55';
-import { P, avatarMedia, avatarUrl, blobUrl, children, fullName, isAudio, lifeEvents, lifespan, partners, personLabel, placeName, siblings } from './domain.js?v=55';
-import { fmtDur } from './panel.js?v=55';
-import { ui } from './state.js?v=55';
-import { saveFile } from './importexport.js?v=55';
-import { modal } from './modal.js?v=55';
-import { S } from './state.js?v=55';
-import { applyTheme, cssv, themeName } from './theme.js?v=55';
-import { esc, fmtDate, toast, yearOf, localDay } from './util.js?v=55';
+import { storyOf } from './card.js?v=56';
+import { P, avatarMedia, avatarUrl, blobUrl, children, fullName, isAudio, lifeEvents, lifespan, partners, personLabel, placeName, siblings } from './domain.js?v=56';
+import { fmtDur } from './panel.js?v=56';
+import { ui } from './state.js?v=56';
+import { saveFile } from './importexport.js?v=56';
+import { modal } from './modal.js?v=56';
+import { S } from './state.js?v=56';
+import { applyTheme, cssv, themeName } from './theme.js?v=56';
+import { esc, fmtDate, toast, yearOf, localDay } from './util.js?v=56';
 
 /* ============ PRINT / PDF ============ */
 function loadJsPDF(){return new Promise((res,rej)=>{if(window.jspdf) return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.onload=res; s.onerror=()=>rej(new Error('Kunde inte ladda PDF-verktyget')); document.head.appendChild(s);});}

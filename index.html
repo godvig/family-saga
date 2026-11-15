@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Släktsagan</title>
+<title>Släktsagan – gratis släktträd och släktforskning i webbläsaren</title>
+<link rel="canonical" href="https://klansagan.godvig.com/">
+<meta name="author" content="Adam Englund">
 <meta name="description" content="Släktsagan – släktens saga samlad på ett ställe: släktträd, bilder, röstminnen och källor från kyrkböckerna, och en länk som låter hela släkten hjälpa till. Gratis, utan konto, krypterad delning.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Släktsagan">
@@ -13,6 +15,10 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:locale" content="sv_SE">
+<meta property="og:url" content="https://klansagan.godvig.com/">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"Släktsagan","url":"https://klansagan.godvig.com/","inLanguage":"sv","applicationCategory":"LifestyleApplication","operatingSystem":"Webbläsare","offers":{"@type":"Offer","price":"0","priceCurrency":"SEK"},"author":{"@type":"Person","name":"Adam Englund","url":"https://adamenglund.eu/"},"codeRepository":"https://github.com/godvig/slaktsagan"}
+</script>
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#4a3324">
 <link rel="icon" href="favicon.svg?v=3" type="image/svg+xml">
@@ -25,7 +31,7 @@
 <link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/fraunces-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="src/styles.css?v=55">
+<link rel="stylesheet" href="src/styles.css?v=56">
 <script>
 /* Start-up guard: if the app hasn't started after a while (a file that failed to load, an old
    browser, a blocked script), say so in plain Swedish instead of leaving an empty page. */
@@ -51,8 +57,8 @@
 </script>
 <script src="vendor/d3-7.9.0.min.js"></script>
 <script src="vendor/topojson-client-3.1.0.min.js"></script>
-<script src="src/core.js?v=55"></script>
-<script src="src/config.js?v=55"></script>
+<script src="src/core.js?v=56"></script>
+<script src="src/config.js?v=56"></script>
 </head>
 <body>
 <header>
@@ -92,11 +98,11 @@
 </header>
 <div id="demoBar"><span>👑 Du tittar på exemplet <b>Vasaätten</b>. Inget sparas här – dina egna uppgifter ligger orörda.</span><span style="flex:1"></span><button class="btn primary" id="demoExitBtn" onclick="exitDemo()">Stäng exemplet</button></div>
 <main>
-  <section id="view"></section>
+  <section id="view"><div class="boot-intro"><h1>Släktsagan</h1><p>Släktträd, solfjäder, källor från kyrkböckerna, tidslinje och karta – gratis, utan konto och med krypterad delning så att hela släkten kan hjälpa till. Appen startar…</p></div></section>
   <aside id="panel"></aside>
 </main>
 
 <script nomodule>document.getElementById('view').innerHTML='<div class="boot-fail"><h2>Webbläsaren är för gammal</h2><p>Släktsagan behöver en nyare webbläsare. Uppdatera, eller öppna sidan i Chrome, Edge, Firefox eller Safari.</p></div>';</script>
-<script type="module" src="src/app/main.js?v=55"></script>
+<script type="module" src="src/app/main.js?v=56"></script>
 </body>
 </html>

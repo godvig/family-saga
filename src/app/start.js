@@ -1,18 +1,18 @@
 /* Släktsagan · start.js — The start page, the presentation page and separate trees. */
-import { demoActive } from './demo.js?v=55';
-import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=55';
-import { findDups, mergePersons } from './dups.js?v=55';
-import { confirmBox, modal } from './modal.js?v=55';
-import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=55';
-import { PWA } from './pwa.js?v=55';
-import { bindOpenSearches, openSearchesHTML } from './research.js?v=55';
-import { Share } from './share.js?v=55';
-import { renderAll, setFocus } from './router.js?v=55';
-import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=55';
-import { Store } from './store.js?v=55';
-import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=55';
-import { $, clone, esc, toast, yearOf } from './util.js?v=55';
-import { fillNames } from './views.js?v=55';
+import { demoActive } from './demo.js?v=56';
+import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=56';
+import { findDups, mergePersons } from './dups.js?v=56';
+import { confirmBox, modal } from './modal.js?v=56';
+import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=56';
+import { PWA } from './pwa.js?v=56';
+import { bindOpenSearches, openSearchesHTML } from './research.js?v=56';
+import { Share } from './share.js?v=56';
+import { renderAll, setFocus } from './router.js?v=56';
+import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=56';
+import { Store } from './store.js?v=56';
+import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=56';
+import { $, clone, esc, toast, yearOf } from './util.js?v=56';
+import { fillNames } from './views.js?v=56';
 
 /* ============ START ============ */
 function heroArt(){
@@ -42,7 +42,7 @@ function landingMore(){
       <div><b>Krypterat när du delar</b><p>Delar du trädet krypteras det på din dator. Servern ser bara oläsbar data – nyckeln finns bara i länken du skickar.</p></div>
       <div><b>Ta med dig allt</b><p>Exportera till GEDCOM, som alla släktprogram läser, eller spara en säkerhetskopia med bilder och röstminnen.</p></div>
     </div></section>
-    <footer class="land-foot">Släktsagan byggs av <a href="https://godvig.github.io" target="_blank" rel="noopener">Adam Englund</a> · <a href="${REPO_URL}" target="_blank" rel="noopener">Öppen källkod på GitHub</a> (AGPL-3.0) · <a href="${REPO_URL}/issues" target="_blank" rel="noopener">Tipsa om en idé</a></footer>`;
+    <footer class="land-foot">Släktsagan byggs av <a href="https://adamenglund.eu" target="_blank" rel="noopener">Adam Englund</a> · <a href="${REPO_URL}" target="_blank" rel="noopener">Öppen källkod på GitHub</a> (AGPL-3.0) · <a href="${REPO_URL}/issues" target="_blank" rel="noopener">Tipsa om en idé</a></footer>`;
 }
 /** Start the film only when it scrolls into view, so the start page stays light. */
 function bindLanding(v){
