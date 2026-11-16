@@ -35,6 +35,11 @@ export default [
     languageOptions: { ecmaVersion: 2022, sourceType: 'script', globals: { ...globals.serviceworker } },
   },
   {
+    // Edge Function logic: plain ES modules that run on Deno in production and in Node under Vitest
+    files: ['supabase/functions/**/*.mjs'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: { ...globals.node } },
+  },
+  {
     files: ['tests/**/*.mjs', 'scripts/**/*.mjs', 'eslint.config.mjs', 'playwright.config.mjs'],
     languageOptions: { ecmaVersion: 2022, sourceType: 'module', globals: { ...globals.node } },
   },

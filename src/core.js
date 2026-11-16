@@ -946,7 +946,369 @@
     };
   }
 
-  const api = { onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret, sha256hex, keyTag, kidsIndex, isLiving, livingInfo, likelyDeceased, redactLiving, splitForReaders, joinPrivate, diffNews, addNews, pruneNews };
+  /* ------------------------------------------------------------ Archive search: matching */
+
+  /** From this score a hit is shown as a likely match; below `weak` it is folded away. */
+  const ARCHIVE_SCORE = { strong: 70, weak: 40 };
+
+  /** Spellings that fold to one given name once the general rules in foldName have run. */
+  const NAME_SPELLINGS = /** @type {Record<string,string>} */ ({ pehr: 'per', par: 'per', olov: 'olof', olaf: 'olof', gustaf: 'gustav', niels: 'nils' });
+
+  /**
+   * Fold a name for comparison: lower case, no diacritics, old and new spellings merged
+   * (Pehr/Per/Pär, Carl/Karl, Christina/Kristina, Elisabeth/Elisabet, Britta/Brita).
+   * @param {string|undefined|null} s
+   */
+  function foldName(s) {
+    const t = String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z\s-]/g, '')
+      .replace(/w/g, 'v').replace(/ph/g, 'f').replace(/th/g, 't').replace(/ck/g, 'k').replace(/ch/g, 'k')
+      .replace(/c(?=[aou]|$)/g, 'k').replace(/q/g, 'k').replace(/z/g, 's').replace(/(.)\1+/g, '$1').trim();
+    return NAME_SPELLINGS[t] || t;
+  }
+
+  const PATRONYM_END = /(sson|ssen|son|sen|dotter|dtr|dr|ss)$/;
+  /** Does this look like a patronymic (Olofsson, Persdotter, or the register's abbreviation Olofss)? @param {string} s */
+  const isPatronymic = (s) => PATRONYM_END.test(String(s || '').trim().toLowerCase().split(/\s+/).pop() || '');
+
+  /**
+   * The father's given name a patronymic stands for, in the spellings it may have: Olsson → ol,
+   * Olofsson → olof, Andersson → ander/anders. Used with prefix matching, so Olsson fits Olof.
+   * @param {string} patronym @returns {string[]}
+   */
+  function patronymStems(patronym) {
+    const w = String(patronym || '').trim().toLowerCase().split(/\s+/).pop() || '';
+    const m = w.match(PATRONYM_END); if (!m) return [];
+    const stem = w.slice(0, w.length - m[0].length);
+    return [...new Set([stem, stem.replace(/s$/, ''), stem + (m[0] === 'sson' || m[0] === 'ssen' ? 's' : '')])].filter((x) => x.length >= 2).map(foldName);
+  }
+
+  /** Is this patronymic (Olofsson, Olsson, Olofss) formed from this father's given name? @param {string} patronym @param {string|undefined} fatherGiven */
+  function patronymMatches(patronym, fatherGiven) {
+    const fg = foldName(String(fatherGiven || '').split(/[\s-]+/)[0]);
+    return !!fg && patronymStems(patronym).some((st) => st === fg || fg.startsWith(st) || (fg.length >= 3 && st.startsWith(fg)));
+  }
+
+  /**
+   * Read a name as the registers write it: "Olsson Lindmark, Olof" (surname part, then given names).
+   * Without a comma it is read as "Given Surname". A leading patronymic before the family name is split off.
+   * @param {string|undefined|null} s
+   * @returns {{raw:string, given:string[], patronym:string, family:string}}
+   */
+  function parseRegisterName(s) {
+    const raw = String(s || '').replace(/\s+/g, ' ').trim();
+    let last = '', first = '';
+    const i = raw.indexOf(',');
+    if (i >= 0) { last = raw.slice(0, i).trim(); first = raw.slice(i + 1).trim(); }
+    else { const t = raw.split(' '); if (t.length > 1) { last = t.pop() || ''; first = t.join(' '); } else first = raw; }
+    const lt = last.split(' ').filter(Boolean);
+    const patronym = lt.length >= 2 && isPatronymic(lt[0]) ? lt[0] : '';
+    return { raw, given: first.split(/[\s-]+/).filter(Boolean), patronym, family: patronym ? lt.slice(1).join(' ') : last };
+  }
+
+  /** Given names to compare: the given names, then the call name. @param {any} p */
+  const givenTokens = (p) => {
+    const g = String(p.given || '').replace(/\*/g, '').split(/[\s-]+/).filter(Boolean), c = String(p.callName || '').trim();
+    if (c && !g.some((x) => foldName(x) === foldName(c))) g.push(c);
+    return g;
+  };
+  /** Surnames a person is known by, birth name first. @param {any} p @returns {string[]} */
+  const surnamesOf = (p) => [...new Set([...(p.formerNames || []).filter((/** @type {any} */ n) => n.type === 'birth' && n.surname).map((/** @type {any} */ n) => n.surname), p.surname].filter(Boolean))];
+
+  /** @param {string[]} have @param {string[]} got @returns {'same'|'variant'|'other'|'none'} first names: same spelling, another spelling, some other given name, or no match */
+  function givenMatch(have, got) {
+    const close = (/** @type {string} */ x, /** @type {string} */ y) => {
+      const fx = foldName(x), fy = foldName(y);
+      if (fx === fy) return x.toLowerCase() === y.toLowerCase() ? 'same' : 'variant';
+      return fx.length >= 5 && lev(fx, fy) <= 1 ? 'variant' : '';
+    };
+    if (!have.length || !got.length) return 'none';
+    const first = close(have[0], got[0]); if (first) return /** @type {'same'|'variant'} */ (first);
+    for (const x of have) for (const y of got) if (close(x, y)) return 'other';
+    return 'none';
+  }
+
+  /** @param {string} a @param {string} b */
+  function sameSurname(a, b) {
+    const x = foldName(String(a).trim().split(/\s+/).pop()), y = foldName(String(b).trim().split(/\s+/).pop());
+    if (!x || !y) return false;
+    if (x === y || (x.length >= 5 && lev(x, y) <= 1)) return true;
+    const sx = patronymStems(a), sy = patronymStems(b);
+    return sx.length > 0 && sy.length > 0 && sx.some((s) => sy.includes(s));
+  }
+
+  /** Does a register parish name fit a place name from the tree ("Gudmundrå sn", "Gudmundrå, Ångermanland")? @param {string} place @param {string} parish */
+  function parishMatch(place, parish) {
+    const strip = (/** @type {string} */ s) => foldName(s.replace(/\b(församling|socken|sn|fs|kyrkoarkiv)\b/gi, ' '));
+    const pa = strip(parish); if (!pa) return false;
+    return String(place).split(',').some((part) => { const x = strip(part); return !!x && (x === pa || (x.length >= 4 && pa.length >= 4 && (x.startsWith(pa) || pa.startsWith(x)))); });
+  }
+
+  /**
+   * How a tree date and a register date compare. Exact date, same year, a couple of years off,
+   * or far off. `years` is the gap in years. Null when either side has no year.
+   * @param {string|undefined} have @param {string|undefined} got @param {{date:string, year:string}} noun
+   * @returns {{code:string, text:string, points:number, years:number}|null}
+   */
+  function dateEvidence(have, got, noun) {
+    const hy = yearOf(have), gy = yearOf(got); if (!hy || !gy) return null;
+    const h = String(have).trim(), g = String(got).trim(), full = (/** @type {string} */ d) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+    const approx = /^(ca|cirka|omkr|före|efter|mellan)/i.test(h), d = Math.abs(hy - gy);
+    if (!approx && full(h) && full(g) && h === g) return { code: 'date-exact', text: `samma ${noun.date}`, points: 35, years: 0 };
+    if (d === 0) return approx || !full(h) ? { code: 'date-year', text: `samma ${noun.year}`, points: 20, years: 0 } : { code: 'date-year', text: `samma ${noun.year}, men inte samma dag`, points: 8, years: 0 };
+    if (d <= 2) return { code: 'date-near', text: `${noun.year} skiljer ${d} år (${gy} i arkivet, ${hy} i trädet)`, points: 6, years: d };
+    if (approx && d <= 5) return { code: 'date-near', text: `${noun.year} är ungefär detsamma (${gy} i arkivet, ${hy} i trädet)`, points: 0, years: d };
+    return { code: 'date-far', text: `${noun.year} stämmer inte (${gy} i arkivet, ${hy} i trädet)`, points: -35, years: d };
+  }
+
+  /**
+   * Score how well one register hit fits a person, and say why. `ctx.role` tells what the hit was
+   * searched for: 'birth' (the person's own birth record), 'child' (the person is a parent in a
+   * birth record) or 'marriage' (the person is the bride or groom). Starts at 0: evidence for adds,
+   * evidence against subtracts, and what the tree does not know counts for nothing either way.
+   * @param {any} person @param {any} cand a candidate as the archive-search function returns it
+   * @param {{persons:Record<string,any>, role?:'birth'|'child'|'marriage', placeName?:(id:string)=>string}} ctx
+   * @returns {{score:number, level:'strong'|'maybe'|'weak', reasons:{code:string, text:string, points:number}[]}}
+   */
+  function candidateScore(person, cand, ctx) {
+    const persons = ctx.persons || {}, placeName = ctx.placeName || ((/** @type {string} */ id) => String(id || ''));
+    const role = ctx.role || (cand.kind === 'marriage' ? 'marriage' : 'birth');
+    const kids = kidsIndex(persons);
+    /** @typedef {{code:string, text:string, points:number}} Reason */
+    const none = { score: 0, level: /** @type {'weak'} */ ('weak'), reasons: /** @type {Reason[]} */ ([]) };
+    if ((role === 'marriage') !== (cand.kind === 'marriage')) return none;
+
+    /** Evidence from a name: the given names and the family name. @returns {Reason[]} */
+    const nameReasons = (/** @type {string} */ rec, /** @type {string} */ who) => {
+      const pn = parseRegisterName(rec), out = /** @type {Reason[]} */ ([]);
+      const m = givenMatch(givenTokens(person), pn.given);
+      if (m === 'same') out.push({ code: 'name-given', text: `förnamnet stämmer (${rec})`, points: 26 });
+      else if (m === 'variant') out.push({ code: 'name-given', text: `förnamnet stämmer, med annan stavning (${rec})`, points: 22 });
+      else if (m === 'other') out.push({ code: 'name-given', text: `ett av förnamnen stämmer (${rec})`, points: 14 });
+      else out.push({ code: 'name-differs', text: `förnamnet stämmer inte (${rec})`, points: -40 });
+      const mine = surnamesOf(person), theirs = [pn.family, pn.patronym].filter(Boolean);
+      if (mine.length && theirs.length) {
+        if (mine.some((a) => theirs.some((b) => sameSurname(a, b)))) out.push({ code: 'surname', text: 'efternamnet stämmer', points: 14 });
+        else if (patronymStems(pn.patronym).length && person.fatherId && persons[person.fatherId] && patronymMatches(pn.patronym, persons[person.fatherId].given)) out.push({ code: 'surname', text: `${who} patronymikon passar faderns namn`, points: 10 });
+        else out.push({ code: 'surname-differs', text: `efternamnet stämmer inte (${pn.family || pn.patronym})`, points: -12 });
+      }
+      return out;
+    };
+
+    /** Evidence from the other person on the record: a parent of the child, or the other spouse. @returns {Reason[]} */
+    const partnerReasons = (/** @type {string} */ rec, /** @type {number} */ penalty) => {
+      if (!rec) return [];
+      const ids = new Set(person.spouseIds || []);
+      for (const c of kids.get(person.id) || []) { const o = c.fatherId === person.id ? c.motherId : c.fatherId; if (o) ids.add(o); }
+      const partners = [...ids].map((id) => persons[id]).filter(Boolean);
+      if (!partners.length) return [];
+      const pn = parseRegisterName(rec);
+      const best = partners.map((p) => givenMatch(givenTokens(p), pn.given)).sort((a, b) => ['same', 'variant', 'other', 'none'].indexOf(a) - ['same', 'variant', 'other', 'none'].indexOf(b))[0];
+      if (best === 'same' || best === 'variant') return [{ code: 'partner', text: `partnerns namn stämmer (${rec})`, points: 24 }];
+      return [{ code: 'partner-differs', text: `ingen partner i trädet heter så (${rec})`, points: penalty }];
+    };
+
+    /** Places the person is known from. @returns {string[]} */
+    const placesOf = () => [person.birthPlace, person.deathPlace, ...(person.events || []).map((/** @type {any} */ e) => e.placeId)].filter(Boolean).map((/** @type {string} */ id) => placeName(id)).filter(Boolean);
+
+    const by = yearOf(person.birthDate), dy = yearOf(person.deathDate), cy = yearOf(cand.date);
+    /** @type {Reason[]} */ let reasons = [];
+
+    if (role === 'birth') {
+      const noun = { date: 'födelsedatum', year: 'födelseår' };
+      if (cand.child) {
+        const m = givenMatch(givenTokens(person), parseRegisterName(cand.child).given);
+        if (m === 'same') reasons.push({ code: 'name-given', text: `förnamnet stämmer (${cand.child})`, points: 30 });
+        else if (m === 'variant') reasons.push({ code: 'name-given', text: `förnamnet stämmer, med annan stavning (${cand.child})`, points: 26 });
+        else if (m === 'other') reasons.push({ code: 'name-given', text: `ett av förnamnen stämmer (${cand.child})`, points: 18 });
+        else reasons.push({ code: 'name-differs', text: `förnamnet stämmer inte (${cand.child})`, points: -40 });
+      }
+      const d = dateEvidence(person.birthDate, cand.date, noun);
+      if (d) {
+        reasons.push(d);
+        if (d.code === 'date-far' && d.years >= 15) reasons.push({ code: 'generation', text: 'troligen en annan generation', points: -15 });
+      }
+      for (const [key, rec, who] of /** @type {[string,string,string][]} */ ([['fatherId', cand.father, 'faderns'], ['motherId', cand.mother, 'moderns']])) {
+        if (!rec) continue;
+        const pn = parseRegisterName(rec), tp = persons[person[key]];
+        if (tp) {
+          const m = givenMatch(givenTokens(tp), pn.given);
+          if (m === 'same' || m === 'variant') reasons.push({ code: 'parent-given', text: `${who} namn stämmer (${rec})`, points: 14 });
+          else if (m === 'other') reasons.push({ code: 'parent-given', text: `${who} namn stämmer delvis (${rec})`, points: 7 });
+          else reasons.push({ code: 'parent-differs', text: `${who} namn stämmer inte (${rec})`, points: -14 });
+          if (surnamesOf(tp).some((a) => [pn.family, pn.patronym].filter(Boolean).some((b) => sameSurname(a, b)))) reasons.push({ code: 'parent-surname', text: `${who} efternamn stämmer`, points: 4 });
+        } else if (key === 'fatherId' && person.surname && isPatronymic(person.surname)) {
+          if (patronymMatches(person.surname, pn.given[0])) reasons.push({ code: 'parent-patronym', text: `efternamnet ${person.surname} passar faderns förnamn (${rec})`, points: 6 });
+          else reasons.push({ code: 'parent-patronym-differs', text: `efternamnet ${person.surname} passar inte faderns förnamn (${rec})`, points: -8 });
+        }
+      }
+      const home = person.birthPlace ? placeName(person.birthPlace) : '';
+      if (home && cand.parish) reasons.push(parishMatch(home, cand.parish) ? { code: 'parish', text: `samma församling (${cand.parish})`, points: 14 } : { code: 'parish-differs', text: `annan församling (${cand.parish}, trädet har ${home})`, points: -6 });
+    } else {
+      // The person is one of two named on the record: try each side that fits their sex and keep the better.
+      const sides = role === 'child' ? (person.sex === 'M' ? ['father'] : person.sex === 'K' ? ['mother'] : ['father', 'mother']) : (person.sex === 'M' ? ['groom'] : person.sex === 'K' ? ['bride'] : ['groom', 'bride']);
+      const other = { father: 'mother', mother: 'father', groom: 'bride', bride: 'groom' };
+      let best = /** @type {Reason[]|null} */ (null), bestSum = -Infinity;
+      for (const side of sides) {
+        const mine = cand[side]; if (!mine) continue;
+        const rs = [...nameReasons(mine, role === 'child' ? (side === 'father' ? 'faderns' : 'moderns') : 'personens'), ...partnerReasons(cand[/** @type {'father'} */ (other[/** @type {'father'} */ (side)])], role === 'child' ? -8 : -15)];
+        const sum = rs.reduce((a, r) => a + r.points, 0);
+        if (sum > bestSum) { best = rs; bestSum = sum; }
+      }
+      reasons = best || [];
+      const parentSide = person.sex === 'M' ? 'father' : person.sex === 'K' ? 'mother' : '';
+
+      if (role === 'child') {
+        if (by && cy) {
+          const age = cy - by, lo = 15, hi = parentSide === 'mother' ? 46 : parentSide === 'father' ? 65 : 55;
+          if (age < 14) reasons.push({ code: 'age', text: `personen var bara ${age} år vid barnets födelse`, points: -45 });
+          else if (age > hi + 4) reasons.push({ code: 'age', text: `personen skulle ha varit ${age} år vid barnets födelse`, points: -40 });
+          else if (age >= lo && age <= hi) reasons.push({ code: 'age', text: `rimlig ålder vid barnets födelse (${age} år)`, points: 8 });
+        }
+        if (dy && cy && cy > dy + (parentSide === 'mother' ? 0 : 1)) reasons.push({ code: 'after-death', text: `barnet föddes ${cy}, efter personens död ${dy}`, points: -50 });
+      } else {
+        const wed = (person.events || []).filter((/** @type {any} */ e) => e.type === 'Vigsel' && e.date);
+        const ds = wed.map((/** @type {any} */ e) => dateEvidence(e.date, cand.date, { date: 'vigseldatum', year: 'vigselår' })).filter(Boolean).sort((a, b) => /** @type {any} */ (b).points - /** @type {any} */ (a).points);
+        if (ds.length) reasons.push(/** @type {Reason} */ (ds[0]));
+        else if (by && cy) {
+          const age = cy - by;
+          if (age < 14) reasons.push({ code: 'age', text: `personen var bara ${age} år vid vigseln`, points: -45 });
+          else if (age >= 16 && age <= 70) reasons.push({ code: 'age', text: `rimlig ålder vid vigseln (${age} år)`, points: 4 });
+        }
+        if (dy && cy && cy > dy) reasons.push({ code: 'after-death', text: `vigseln ${cy} är efter personens död ${dy}`, points: -50 });
+      }
+      if (cand.parish) {
+        const hit = placesOf().find((n) => parishMatch(n, cand.parish));
+        if (hit) reasons.push({ code: 'parish', text: `församlingen finns bland personens platser (${hit})`, points: 12 });
+      }
+    }
+    const score = Math.max(0, Math.min(100, Math.round(reasons.reduce((a, r) => a + r.points, 0))));
+    return { score, level: score >= ARCHIVE_SCORE.strong ? 'strong' : score >= ARCHIVE_SCORE.weak ? 'maybe' : 'weak', reasons };
+  }
+
+  /**
+   * Which register searches are worth making for a person: their own birth, their marriages and
+   * the children they had. Each comes with the request to send to the archive-search function
+   * (a year window worked out from what the tree knows) and the `role` to pass back to candidateScore.
+   * Nothing is asked for a person counted as living, nor with a living parent's name: `refused: 'living'`.
+   * Searches the tree has too little to base a year window on are listed in `skipped` with the reason.
+   * @param {any} person @param {{persons:Record<string,any>, nowYear?:number}} ctx
+   * @returns {{queries:{role:'birth'|'marriage'|'child', label:string, request:{source:string, kind:'birth'|'marriage', name:string, yearMin:number, yearMax:number, limit:number}, fallback?:{reason:string, label:string, request:any}}[], skipped:{role:string, label:string, reason:string}[], refused?:'living'|'unknown'}}
+   */
+  function archiveQueriesFor(person, ctx) {
+    const MAX_MARRIAGE_QUERIES = 3;
+    const persons = ctx.persons || {}, nowYear = ctx.nowYear || new Date().getFullYear();
+    /** @type {any[]} */ const queries = [], skipped = [];
+    if (!person || !person.id) return { queries, skipped, refused: 'unknown' };
+    const kids = kidsIndex(persons);
+    if (isLiving(person, persons, nowYear, kids)) return { queries, skipped, refused: 'living' };
+
+    const searchName = (/** @type {any} */ p) => [givenTokens(p)[0], surnamesOf(p)[0]].filter(Boolean).join(' ');
+    const usable = (/** @type {any} */ p) => !!p && searchName(p).replace(/[^\p{L}]/gu, '').length >= 2 && !isLiving(p, persons, nowYear, kids);
+    const window = (/** @type {number} */ a, /** @type {number} */ b) => { const lo = Math.max(1500, Math.round(a)), hi = Math.min(nowYear, Math.round(b)); return lo <= hi && hi - lo <= 60 ? { yearMin: lo, yearMax: hi } : null; };
+    const add = (/** @type {'birth'|'marriage'|'child'} */ role, /** @type {string} */ label, /** @type {string} */ name, /** @type {any} */ w) =>
+      queries.push({ role, label, request: { source: 'riksarkivet', kind: role === 'marriage' ? 'marriage' : 'birth', name, ...w, limit: 50 } });
+    const skip = (/** @type {string} */ role, /** @type {string} */ label, /** @type {string} */ reason) => skipped.push({ role, label, reason });
+
+    /** Years either side of a recorded date to search: 3 for "ca"/"före"/etc., else 1, even for a full date, since the
+     *  tree's year can be one off and an exact year would lose the record without a word. One year either side also
+     *  covers a date next to New Year, where the record may be written in the other year. */
+    const radius = (/** @type {any} */ d) => (/^(ca|cirka|omkr|före|efter|mellan)/i.test(String(d || '').trim()) ? 3 : 1);
+    const by = yearOf(person.birthDate), dy = yearOf(person.deathDate);
+    const parents = ['fatherId', 'motherId'].map((k) => persons[person[k]]).filter(Boolean);
+    const parentYears = parents.map((p) => yearOf(p.birthDate)).filter((y) => !!y);
+    const kidYears = (kids.get(person.id) || []).map((c) => yearOf(c.birthDate)).filter((y) => !!y);
+
+    /** Years the person can have been born in: their own date, else bounded by parents and children. */
+    let born = /** @type {[number,number]|null} */ (null);
+    if (by) { const r = radius(person.birthDate); born = [by - r, by + r]; }
+    else {
+      let lo = -Infinity, hi = Infinity;
+      if (parentYears.length) { lo = Math.max(lo, Math.max(...parentYears) + 16); hi = Math.min(hi, Math.min(...parentYears) + 55); }
+      if (kidYears.length) { lo = Math.max(lo, Math.max(...kidYears) - 55); hi = Math.min(hi, Math.min(...kidYears) - 16); }
+      if (dy) hi = Math.min(hi, dy);
+      if (isFinite(lo) && isFinite(hi) && lo <= hi) born = [lo, hi];
+    }
+    const mid = born ? (born[0] + born[1]) / 2 : null;
+    const noYears = 'trädet har inga årtal att utgå från';
+
+    // Own birth. The register has the child's given names only, so search on a parent's name when there is one.
+    {
+      const label = 'Födelse', w = born && window(born[0], born[1]);
+      const parent = parents.find((p) => p.id === person.fatherId && usable(p)) || parents.find((p) => usable(p));
+      const livingParent = parents.some((p) => isLiving(p, persons, nowYear, kids));
+      if (!w) skip('birth', label, noYears);
+      else if (parent) add('birth', parent.id === person.fatherId ? 'Födelse (sökt på faderns namn)' : 'Födelse (sökt på moderns namn)', searchName(parent), w);
+      else if (livingParent) skip('birth', label, 'föräldern räknas som levande, så namnet skickas inte');
+      else if (usable(person)) add('birth', 'Födelse (sökt på personens eget namn)', searchName(person), w);
+      else skip('birth', label, 'namn saknas');
+    }
+
+    // Marriages, by the person's own name (the birth surname for someone with a former name).
+    {
+      const label = 'Vigsel', name = searchName(person);
+      const dated = (person.events || []).filter((/** @type {any} */ e) => e.type === 'Vigsel' && yearOf(e.date));
+      if (!usable(person)) skip('marriage', label, 'namn saknas');
+      else if (dated.length) {
+        // One search per distinct wedding year, the earliest three at most (each search is a call to Riksarkivet).
+        const seen = new Set(), weddings = [];
+        for (const e of [...dated].sort((a, b) => /** @type {number} */ (dateKey(a.date)) - /** @type {number} */ (dateKey(b.date)))) {
+          const y = /** @type {number} */ (yearOf(e.date));
+          if (seen.has(y)) continue; seen.add(y); weddings.push({ y, r: radius(e.date) });
+        }
+        for (const { y, r } of weddings.slice(0, MAX_MARRIAGE_QUERIES)) { const w = window(y - r, y + r); if (w) add('marriage', `Vigsel ${y}`, name, w); }
+        if (weddings.length > MAX_MARRIAGE_QUERIES)
+          skip('marriage', 'Vigsel', `${weddings.length} vigselår i trädet, söker de ${MAX_MARRIAGE_QUERIES} första; hoppade över ${weddings.slice(MAX_MARRIAGE_QUERIES).map((x) => x.y).join(', ')}`);
+      } else {
+        const first = kidYears.length ? Math.min(...kidYears) : null, fromBirth = mid ? [mid + 16, Math.min(mid + 55, dy || Infinity)] : null;
+        let range = fromBirth;
+        if (first) range = fromBirth && fromBirth[0] <= first + 1 ? [Math.max(fromBirth[0], first - 12), Math.min(fromBirth[1], first + 1)] : [first - 12, first + 1];
+        const w = range && window(range[0], range[1]);
+        if (dy && by && dy - by < 16) skip('marriage', label, 'dog före 16 års ålder');
+        else if (w) add('marriage', `Vigsel (årtal okänt, söker ${w.yearMin}–${w.yearMax})`, name, w);
+        else skip('marriage', label, noYears);
+      }
+    }
+
+    // Children: the person is searched as a parent. Mothers bear children to about 46, fathers to about 60.
+    {
+      const label = 'Barn', name = searchName(person);
+      const span = person.sex === 'K' ? 46 : 60;
+      const w = mid && window(mid + 16, Math.min(mid + span, (dy || Infinity) + (person.sex === 'K' ? 0 : 1)));
+      if (!usable(person)) skip('child', label, 'namn saknas');
+      else if (!w) skip('child', label, mid ? 'personen dog före barnafödande ålder' : noYears);
+      else {
+        // The other parent's given name narrows the search a lot (all words must be in the record, in any role), but only
+        // when there is exactly one known partner: with several, the name would hide the children of the others.
+        const partnerIds = new Set([...(person.spouseIds || []), ...(kids.get(person.id) || []).map((c) => (c.fatherId === person.id ? c.motherId : c.fatherId))].filter(Boolean));
+        const partner = partnerIds.size === 1 ? persons[[...partnerIds][0]] : null;
+        const pg = partner && usable(partner) ? givenTokens(partner)[0] : '';
+        if (!pg) add('child', 'Barn (sökt på personens namn som förälder)', name, w);
+        else {
+          add('child', 'Barn (sökt på personens och partnerns namn)', `${name} ${pg}`, w);
+          // If the partner's name finds nothing (misspelt, or recorded otherwise), runArchiveQuery searches again without it.
+          queries[queries.length - 1].fallback = { reason: 'partner_name_dropped', label: 'Barn (sökt på personens namn som förälder)', request: { ...queries[queries.length - 1].request, name } };
+        }
+      }
+    }
+    return { queries, skipped };
+  }
+
+  /**
+   * Runs one query from archiveQueriesFor with `search` (request → the function's answer). When the query has a
+   * fallback and the first search finds nothing at all (total 0), it searches once more with the fallback request and
+   * marks the answer with `fallback` (e.g. 'partner_name_dropped'), so the app can say why. Never otherwise.
+   * `request` in the result is the one that produced the answer, to ask for further pages with.
+   * @param {{request:any, fallback?:{reason:string, label:string, request:any}}} query
+   * @param {(request:any)=>Promise<{total:number, offset:number, more:boolean, candidates:any[]}>} search
+   */
+  async function runArchiveQuery(query, search) {
+    const first = await search(query.request);
+    if (!query.fallback || !first || first.total !== 0) return { ...first, request: query.request, fallback: null };
+    const second = await search(query.fallback.request);
+    return { ...second, request: query.fallback.request, fallback: query.fallback.reason };
+  }
+
+  const api = { ARCHIVE_SCORE, foldName, isPatronymic, patronymMatches, parseRegisterName, candidateScore, archiveQueriesFor, runArchiveQuery, onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret, sha256hex, keyTag, kidsIndex, isLiving, livingInfo, likelyDeceased, redactLiving, splitForReaders, joinPrivate, diffNews, addNews, pruneNews };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   // @ts-ignore — browser global
   root.KinCore = api;
