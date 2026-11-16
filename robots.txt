@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://saga.godvig.com/sitemap.xml
+Sitemap: https://xn--slktsagan-w2a.se/sitemap.xml

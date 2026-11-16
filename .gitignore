@@ -10,3 +10,6 @@ klansagan-*.json
 kinsaga-*.json
 test-results/
 playwright-report/
+
+# Supabase CLI state (project ref, versions) for this machine only
+supabase/.temp/

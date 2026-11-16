@@ -15,74 +15,129 @@
   .btn{display:inline-block;padding:10px 16px;border-radius:10px;border:1px solid #2f5d4a;background:#2f5d4a;color:#fff;text-decoration:none;font-weight:600;cursor:pointer;font-size:15px}
   .btn.ghost{background:transparent;color:#2f5d4a}
   .muted{color:#6d5c48;font-size:14px}
+  ol{padding-left:22px}
+  [hidden]{display:none}
 </style>
 </head>
 <body>
 <main>
-  <h1>Flyttar ditt släktarkiv…</h1>
+  <h1 id="title">Flyttar ditt släktarkiv…</h1>
   <p id="msg" class="muted">Väntar på den gamla adressen.</p>
-  <div class="bar"><i id="bar"></i></div>
+  <section id="refused" hidden>
+    <p>Den här webbläsaren har redan ett släktarkiv sparat på släktsagan.se, så ingenting har flyttats från <b class="from"></b>. Arkivet här och arkivet på den gamla adressen är som förut.</p>
+    <p>Så flyttar du ändå:</p>
+    <ol>
+      <li>Öppna Släktsagan på den gamla adressen (<span class="from"></span>), gå till ”Läs in &amp; spara” och ta en säkerhetskopia (JSON).</li>
+      <li>Öppna Släktsagan här, gå till ”Läs in &amp; spara” och läs in säkerhetskopian.</li>
+    </ol>
+    <p class="muted">En kopia av allt som redan fanns här har sparats i webbläsaren för säkerhets skull.</p>
+  </section>
+  <div class="bar" id="barw"><i id="bar"></i></div>
   <p id="acts"></p>
 </main>
 <script>
-/* The receiving end of the move from klansagan.godvig.com to saga.godvig.com.
+/* The receiving end of the move from an old address (klansagan.godvig.com, saga.godvig.com) to släktsagan.se.
    A browser keeps saved data per address, so the archive, photos, voice memories and the keys
    to shared trees can't follow a new address on their own. The page on the old address opens
    this one and hands everything over with postMessage, inside the browser – nothing passes a server.
-   Only messages from the old address, from the window that opened this one, are accepted. */
+   Only messages from one of the old addresses, from the window that opened this one, are accepted, and once
+   the move has started only from that same address.
+
+   A move only ever goes into an empty address. Before anything is written, whatever is here (the archive store
+   and localStorage) is copied to one entry in the archive store, `klansagan-before-move-<time>-<old host>`. If
+   anything is here at all (people, shared trees, photos), nothing is moved and the page explains how to move
+   with a backup file instead. */
 (function(){
-  var FROM = 'https://klansagan.godvig.com';
-  var opener = window.opener, msg = document.getElementById('msg'), bar = document.getElementById('bar'), acts = document.getElementById('acts');
-  var hash = '', total = 0, done = 0, replace = false, db = null;
+  var OLD = ['https://klansagan.godvig.com', 'https://saga.godvig.com'];
+  var FROM = null; // the old address this move comes from, fixed by its first message
+  var MAIN = 'klansagan-v1', LEGACY = ['kinsaga-v1', 'slaktarkivet-v1'], BACKUP = 'klansagan-before-move-';
+  var opener = window.opener, $ = function(id){ return document.getElementById(id); };
+  var msg = $('msg'), bar = $('bar'), acts = $('acts');
+  var hash = '', total = 0, done = 0, state = null, db = null;
   function say(t){ msg.textContent = t; }
   function finish(ok, t){
     say(t); bar.style.width = ok ? '100%' : bar.style.width;
     acts.innerHTML = '<a class="btn" href="./' + (ok ? hash : '') + '">Öppna Släktsagan</a>';
   }
-  if(!opener){ finish(false, 'Den här sidan används bara när arkivet flyttas från den gamla adressen. Öppna klansagan.godvig.com för att flytta.'); return; }
+  if(!opener){ finish(false, 'Den här sidan används bara när arkivet flyttas från den gamla adressen. Öppna den gamla adressen (klansagan.godvig.com eller saga.godvig.com) för att flytta.'); return; }
 
   function openDb(){ return new Promise(function(ok, bad){ var r = indexedDB.open('klansagan', 2);
     r.onupgradeneeded = function(){ var d = r.result; ['blobs','archive'].forEach(function(n){ if(!d.objectStoreNames.contains(n)) d.createObjectStore(n); }); };
     r.onsuccess = function(){ ok(r.result); }; r.onerror = function(){ bad(r.error); }; }); }
-  function get(store, k){ return new Promise(function(ok, bad){ var q = db.transaction(store).objectStore(store).get(k); q.onsuccess = function(){ ok(q.result); }; q.onerror = function(){ bad(q.error); }; }); }
-  function putAll(store, items){ return new Promise(function(ok, bad){ var t = db.transaction(store, 'readwrite'), st = t.objectStore(store);
+  function req(store, f){ return new Promise(function(ok, bad){ var q = f(db.transaction(store).objectStore(store)); q.onsuccess = function(){ ok(q.result); }; q.onerror = function(){ bad(q.error); }; }); }
+  function get(store, k){ return req(store, function(st){ return st.get(k); }); }
+  function keys(store){ return req(store, function(st){ return st.getAllKeys(); }); }
+  function putAll(store, items){ return new Promise(function(ok, bad){ if(!items.length) return ok(); var t = db.transaction(store, 'readwrite'), st = t.objectStore(store);
     items.forEach(function(it){ st.put(it[1], it[0]); }); t.oncomplete = function(){ ok(); }; t.onerror = function(){ bad(t.error); }; }); }
-  function count(v){ return v && v.persons ? Object.keys(v.persons).length : 0; }
+  function persons(v){ return v && v.persons ? Object.keys(v.persons).length : 0; }
+  function parse(s){ try{ return JSON.parse(s); }catch(e){ return null; } }
+  function allLocal(){ var o = {}; for(var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; }
+
+  /** Whether anything a move could overwrite is here: people (in IndexedDB or an older localStorage copy), shared trees or photos. */
+  async function lookHere(){
+    var ks = (await keys('archive')).map(String).filter(function(k){ return k.indexOf(BACKUP) !== 0; });
+    var n = persons(await get('archive', MAIN));
+    if(!n) [MAIN].concat(LEGACY).some(function(k){ n = persons(parse(localStorage.getItem(k))); return n; });
+    var shares = parse(localStorage.getItem('klansagan-shares')), shared = shares && shares.trees ? Object.keys(shares.trees).length : 0;
+    var blobs = (await keys('blobs')).length;
+    var trees = ks.some(function(k){ return /^klansagan-tree-/.test(k); });
+    return { keys: ks, any: !!(n || shared || blobs || trees) };
+  }
+
+  /** One copy of everything here, before the move writes anything. */
+  async function backupHere(here){
+    var local = allLocal();
+    if(!here.keys.length && !Object.keys(local).length) return;
+    var archive = [];
+    for(var i = 0; i < here.keys.length; i++) archive.push([here.keys[i], await get('archive', here.keys[i])]);
+    var at = new Date().toISOString();
+    await putAll('archive', [[BACKUP + at + '-' + new URL(FROM).host, { at: at, from: FROM, archive: archive, local: local }]]);
+  }
 
   window.addEventListener('message', function(e){
-    if(e.origin !== FROM || e.source !== opener) return;
+    if(e.source !== opener || OLD.indexOf(e.origin) < 0 || (FROM && e.origin !== FROM)) return;
+    FROM = e.origin;
     var m = e.data || {};
     var reply = function(o){ opener.postMessage(o, FROM); };
     (async function(){
       try{
         if(m.t === 'start'){
+          if(state) return; // one move per page
           hash = typeof m.hash === 'string' && /^#[\w.\-]*$/.test(m.hash) ? m.hash : '';
           total = m.total || 1; db = await openDb();
-          // Never quietly overwrite an archive that is already here.
-          var here = await get('archive', 'klansagan-v1');
-          if(count(here) && m.persons){
-            replace = confirm('Det finns redan ett släktarkiv på den nya adressen med ' + count(here) + ' personer.\n\nOK: ersätt det med arkivet från den gamla adressen (' + m.persons + ' personer).\nAvbryt: behåll det som finns här och flytta bara bilder och delade träd.');
-          } else replace = true;
-          say('Tar emot…'); reply({ t: 'go' });
+          var here = await lookHere();
+          await backupHere(here);
+          if(here.any){
+            state = 'refused';
+            Array.prototype.forEach.call(document.querySelectorAll('.from'), function(el){ el.textContent = new URL(FROM).host; });
+            $('title').textContent = 'Det finns redan ett släktarkiv här'; say(''); $('barw').hidden = true; $('refused').hidden = false;
+            acts.innerHTML = '<a class="btn" href="./">Öppna Släktsagan här</a>';
+            reply({ t: 'refused' });
+            return;
+          }
+          state = 'moving'; say('Tar emot…'); reply({ t: 'go' });
+        } else if(state !== 'moving'){
+          return; // nothing is taken after a refusal
         } else if(m.t === 'archive' || m.t === 'blobs'){
           var items = (m.items || []).filter(function(it){ return Array.isArray(it) && typeof it[0] === 'string'; });
-          if(m.t === 'archive' && !replace){ var keep = []; for(var i = 0; i < items.length; i++){ if(!(await get('archive', items[i][0]))) keep.push(items[i]); } items = keep; }
           await putAll(m.t, items);
           done += (m.items || []).length; bar.style.width = Math.min(99, Math.round(100 * done / total)) + '%';
           say('Tar emot… ' + done + ' av ' + total); reply({ t: 'ack', n: m.n });
         } else if(m.t === 'local'){
           var o = m.items || {};
-          Object.keys(o).forEach(function(k){ if(typeof o[k] !== 'string') return; if(replace || localStorage.getItem(k) === null) localStorage.setItem(k, o[k]); });
+          Object.keys(o).forEach(function(k){ if(typeof o[k] === 'string') localStorage.setItem(k, o[k]); });
           localStorage.setItem('klansagan-moved', new Date().toISOString());
           reply({ t: 'ack', n: m.n });
         } else if(m.t === 'done'){
-          finish(true, 'Klart! Ditt släktarkiv, dina bilder och dina delade träd finns nu här på saga.godvig.com. Spara gärna den nya adressen som bokmärke.');
+          state = 'done';
+          finish(true, 'Klart! Ditt släktarkiv, dina bilder och dina delade träd finns nu här på släktsagan.se. Spara gärna den nya adressen som bokmärke.');
           reply({ t: 'thanks' });
         }
       }catch(err){ reply({ t: 'error', error: String(err && err.message || err) }); finish(false, 'Något gick fel: ' + (err && err.message || err) + '. Ingenting har tagits bort på den gamla adressen – prova igen, eller ta en säkerhetskopia där och läs in den här.'); }
     })();
   });
-  opener.postMessage({ t: 'ready' }, FROM);
+  // The opener's address can't be read from here; a message to any other address than the opener's is dropped by the browser.
+  OLD.forEach(function(o){ opener.postMessage({ t: 'ready' }, o); });
 })();
 </script>
 </body>

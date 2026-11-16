@@ -22,7 +22,7 @@ function heroArt(){
   return `<svg viewBox="-200 -200 400 230" width="88%"><g>${parts.join('')}<circle r="30" fill="${cssv('--accent')}"/></g></svg>`;
 }
 /* ============ Presentation (first visit, and "Om Släktsagan") ============ */
-const REPO_URL='https://github.com/godvig/slaktsagan';
+const REPO_URL='https://github.com/godvig/family-saga';
 function landingMore(){
   const F=[
     ['🌳','Ett träd som rör sig','Klicka på någon så glider släkten på plats runt hen. Anor, ättlingar, kusiner och ingifta – utan att linjerna trasslar.'],
