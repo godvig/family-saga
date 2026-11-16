@@ -32,7 +32,7 @@ Looks up birth and marriage records in Riksarkivet's search API for the "Leta i 
 
 **Privacy.** The function never sees the family tree. It logs source, kind and status code, never a name. Identical queries are answered from memory for 10 minutes so Riksarkivet is not hit twice. Riksarkivet logs every call it receives, which is why the app only searches for people who are not living.
 
-**CORS.** Allowed origins are `https://saga.godvig.com` and `http://localhost:<port>`. Edit `ALLOWED_ORIGINS` in `archive-search/logic.mjs` if you host the app elsewhere. A request without an `Origin` header (curl) is answered but gets no CORS headers.
+**CORS.** Allowed origins are `https://xn--slktsagan-w2a.se` (släktsagan.se; browsers send an internationalised domain in punycode, so that is the form to list) and `http://localhost:<port>`. The old addresses saga.godvig.com and klansagan.godvig.com only redirect and are refused. Edit `ALLOWED_ORIGINS` in `archive-search/logic.mjs` if you host the app elsewhere. A request without an `Origin` header (curl) is answered but gets no CORS headers.
 
 ### Files
 

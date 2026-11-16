@@ -35,7 +35,7 @@ const setup = (reply = () => json(birthReply), extra = {}) => {
 describe('a valid query', () => {
   it('returns candidates in the common shape', async () => {
     const { handle, fetch } = setup();
-    const res = await call(handle, good, { origin: 'https://saga.godvig.com' });
+    const res = await call(handle, good, { origin: 'https://xn--slktsagan-w2a.se' });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({ source: 'riksarkivet', kind: 'birth', total: 448, offset: 0 });
@@ -178,7 +178,7 @@ describe('when the archive fails', () => {
 });
 
 describe('CORS', () => {
-  it.each(['https://saga.godvig.com', 'http://localhost:8000', 'http://localhost'])('answers %s', async (origin) => {
+  it.each(['https://xn--slktsagan-w2a.se', 'http://localhost:8000', 'http://localhost'])('answers %s', async (origin) => {
     const res = await call(setup().handle, good, { origin });
     expect(res.headers.get('access-control-allow-origin')).toBe(origin); expect(res.headers.get('vary')).toBe('Origin');
   });
@@ -190,7 +190,7 @@ describe('CORS', () => {
     expect(res.headers.get('access-control-allow-headers')).toContain('apikey');
     expect(fetch).not.toHaveBeenCalled();
   });
-  it.each(['https://evil.example', 'https://klansagan.godvig.com', 'http://saga.godvig.com', 'https://klansagan.godvig.com.evil.example', 'http://localhost.evil.example', 'http://localhost:80a', 'null'])('refuses %s', async (origin) => {
+  it.each(['https://evil.example', 'https://klansagan.godvig.com', 'https://saga.godvig.com', 'http://xn--slktsagan-w2a.se', 'https://släktsagan.se', 'https://xn--slktsagan-w2a.se.evil.example', 'https://klansagan.godvig.com.evil.example', 'http://localhost.evil.example', 'http://localhost:80a', 'null'])('refuses %s', async (origin) => {
     const { handle, fetch } = setup();
     for (const method of ['POST', 'OPTIONS']) {
       const res = await call(handle, good, { origin, method });

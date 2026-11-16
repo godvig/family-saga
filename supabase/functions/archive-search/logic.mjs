@@ -11,8 +11,9 @@ import { riksarkivet } from './adapters/riksarkivet.mjs';
 
 export const ADAPTERS = { riksarkivet };
 
-/** Where the app is served from. localhost is for development. */
-export const ALLOWED_ORIGINS = ['https://saga.godvig.com'];
+/** Where the app is served from, as the browser sends it in Origin: an internationalised domain arrives in punycode
+    (släktsagan.se → xn--slktsagan-w2a.se). localhost is for development. */
+export const ALLOWED_ORIGINS = ['https://xn--slktsagan-w2a.se'];
 const LOCAL_ORIGIN = /^http:\/\/localhost(:\d{1,5})?$/;
 
 const FIELDS = new Set(['source', 'kind', 'name', 'yearMin', 'yearMax', 'place', 'limit', 'offset']);
