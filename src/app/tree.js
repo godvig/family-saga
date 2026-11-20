@@ -1,18 +1,18 @@
 /* Släktsagan · tree.js — The family tree: layout, drawing, animation and the kinship highlight. */
-import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=59';
-import { pickImageFor } from './media.js?v=59';
-import { openPersonModal } from './modal.js?v=59';
-import { openCount } from './panel.js?v=59';
-import { printChart } from './print.js?v=59';
-import { relChainSheet, relation } from './relationship.js?v=59';
-import { emptyState, renderAll, select, setFocus } from './router.js?v=59';
-import { linkModal, treeOf, trees } from './start.js?v=59';
-import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=59';
-import { Store } from './store.js?v=59';
-import { themeName } from './theme.js?v=59';
-import { $, esc, toast } from './util.js?v=59';
-import { hideModal } from './views.js?v=59';
-import { Share } from './share.js?v=59';
+import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=60';
+import { pickImageFor } from './media.js?v=60';
+import { openPersonModal } from './modal.js?v=60';
+import { openCount } from './panel.js?v=60';
+import { printChart } from './print.js?v=60';
+import { relChainSheet, relation } from './relationship.js?v=60';
+import { emptyState, renderAll, select, setFocus } from './router.js?v=60';
+import { linkModal, treeOf, trees } from './start.js?v=60';
+import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=60';
+import { Store } from './store.js?v=60';
+import { themeName } from './theme.js?v=60';
+import { $, esc, toast } from './util.js?v=60';
+import { hideModal } from './views.js?v=60';
+import { Share } from './share.js?v=60';
 
 /* ============ TREE ============ */
 const KIN_LEVELS=['Inga','Syskon','Kusiner','Sysslingar','Tremänningar','Fyrmänningar','Femmänningar','Sexmänningar','Sjumänningar','Åttamänningar','Niomänningar'];

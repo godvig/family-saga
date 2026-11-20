@@ -11,7 +11,7 @@ test('GEDCOM export and import round-trip the example', async ({ page }, info) =
   await fresh(page);
   await page.evaluate(() => { location.hash = 'import'; });
   await page.setInputFiles('#impFile', file);
-  await expect(page.locator('.ov .ged-stats')).toContainText('37');
+  await expect(page.locator('.ov .ged-stats')).toContainText(`${ref[0]}personer`);
   await page.click('.ov [data-ok]');
   await expect.poll(count).toEqual(ref);
 });

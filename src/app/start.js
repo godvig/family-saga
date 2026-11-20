@@ -1,18 +1,18 @@
 /* Släktsagan · start.js — The start page, the presentation page and separate trees. */
-import { demoActive } from './demo.js?v=59';
-import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=59';
-import { findDups, mergePersons } from './dups.js?v=59';
-import { confirmBox, modal } from './modal.js?v=59';
-import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=59';
-import { PWA } from './pwa.js?v=59';
-import { bindOpenSearches, openSearchesHTML } from './research.js?v=59';
-import { Share } from './share.js?v=59';
-import { renderAll, setFocus } from './router.js?v=59';
-import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=59';
-import { Store } from './store.js?v=59';
-import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=59';
-import { $, clone, esc, toast, yearOf } from './util.js?v=59';
-import { fillNames } from './views.js?v=59';
+import { demoActive } from './demo.js?v=60';
+import { P, ancestorsOf, descendantsOf, fullName, homePerson, personLabel, shortName } from './domain.js?v=60';
+import { findDups, mergePersons } from './dups.js?v=60';
+import { confirmBox, modal } from './modal.js?v=60';
+import { ago, commentsFor, nameColor, openQuestions, personByLabel } from './panel.js?v=60';
+import { PWA } from './pwa.js?v=60';
+import { bindOpenSearches, openSearchesHTML } from './research.js?v=60';
+import { Share } from './share.js?v=60';
+import { renderAll, setFocus } from './router.js?v=60';
+import { ALL, APP_VERSION, HIDDEN, S, activeView, ui } from './state.js?v=60';
+import { Store } from './store.js?v=60';
+import { allPersonsDatalist, bindChips, chipHTML, cssv, openCard, personPicker } from './theme.js?v=60';
+import { $, clone, esc, toast, yearOf } from './util.js?v=60';
+import { fillNames } from './views.js?v=60';
 
 /* ============ START ============ */
 function heroArt(){
@@ -34,7 +34,7 @@ function landingMore(){
     ['🗺','Karta och tidslinje','Se var släkten levde och vad som hände i världen samtidigt.'],
     ['↶','Ångra allt','Råkade du ta bort fel person eller läsa in fel fil? Ett klick, så är allt som förut.'],
   ];
-  return `<section class="land-sec land-video"><div class="lv-text"><h2>Se den i rörelse</h2><p>Gustav Vasas ättlingar – och hur Sigrid och Władysław IV är släkt. Exemplet Vasaätten finns inbyggt, så du kan prova allt utan att skriva in en enda person.</p><button class="btn primary" onclick="loadDemo()">👑 Öppna exemplet</button></div>
+  return `<section class="land-sec land-video"><div class="lv-text"><h2>Se den i rörelse</h2><p>Gustav Vasas ättlingar – och hur Sigrid och Władysław IV är släkt. Exemplet med Sveriges kungaätter finns inbyggt, så du kan prova allt utan att skriva in en enda person.</p><button class="btn primary" onclick="loadDemo()">👑 Öppna exemplet</button></div>
       <video class="lv-video" poster="docs/media/demo-poster.jpg" muted loop playsinline preload="none" aria-label="Kort film: trädet glider mellan personer och släktvägen lyser upp"><source src="docs/media/demo.webm" type="video/webm"><source src="docs/media/demo.mp4" type="video/mp4"></video></section>
     <section class="land-sec"><h2>Det här kan Släktsagan</h2><div class="feat-grid">${F.map(([i,t,d])=>`<div class="feat"><span class="ic">${i}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
     <section class="land-sec trust"><h2>Din släkt, dina uppgifter</h2><div class="trust-grid">
@@ -105,7 +105,7 @@ function renderStart(){
     <div class="choices">
       ${ed?`<a class="choice primary" href="#import"><span class="ic">📄</span><b>Jag har redan släktdata</b><span>Läs in en GEDCOM-fil från Disgen, MyHeritage, Ancestry eller Geni – eller en Excel-lista. Du ser allt innan något sparas.</span><span class="go">Läs in fil →</span></a>
       <button class="choice" onclick="openPersonModal()"><span class="ic">✏️</span><b>Börja med mig själv</b><span>Skriv in dig själv och lägg sedan till föräldrar, mor- och farföräldrar.</span><span class="go">Lägg till första personen →</span></button>`:''}
-      <button class="choice" onclick="loadDemo()"><span class="ic">👑</span><b>Titta på ett exempel</b><span>Vasaätten, från Gustav Vasa till drottning Kristina. Exemplet sparas inte.</span><span class="go">Visa exemplet →</span></button>
+      <button class="choice" onclick="loadDemo()"><span class="ic">👑</span><b>Titta på ett exempel</b><span>Sveriges kungaätter, från Gustav Vasa till Carl XVI Gustaf. Exemplet sparas inte.</span><span class="go">Visa exemplet →</span></button>
     </div>${landingMore()}</div>`;
     bindLanding(v);
     return;
@@ -133,7 +133,7 @@ function renderStart(){
       <h1>${home?'Släkten kring '+esc(fullName(home)):'Ditt släktarkiv'}</h1>
       <p>${all.length} personer${years.length?`, från ${Math.min(...years)} till ${Math.max(...years)}`:''}. ${home&&anc?`Du har hittat ${anc} anor till ${esc(shortName(home))}, ${maxGen} generationer bakåt.`:''}${home&&!anc&&descendantsOf(home.id).size?`${descendantsOf(home.id).size} ättlingar till ${esc(shortName(home))}.`:''}</p>
       <div class="acts"><button class="btn primary" onclick="goHome()">Öppna släktträdet</button>${home?`<button class="btn" onclick="openCard('${home.id}')">Personkort</button>`:''}${ed?'<button class="btn" onclick="openPersonModal()">+ Ny person</button>':''}<button class="btn" onclick="shareModal(activeView())">🔗 Dela med släkten</button>${demoActive()?'<button class="btn" onclick="exitDemo()">Stäng exemplet</button>':''}</div>
-      <div class="hero-links">${demoActive()?'':'<a href="#" onclick="loadDemo();return false">👑 Titta på exemplet Vasaätten</a>'}${ui.simple?'<a href="#" onclick="applySimple(false);renderAll(true);return false">Visa alla funktioner</a>':'<a href="#" onclick="applySimple(true);applySize(true);renderAll(true);return false">Enkelt läge</a>'}<a href="#" onclick="settingsModal();return false">Inställningar</a>${PWA.can()?'<a href="#" onclick="PWA.install();return false">📲 Installera som app</a>':''}</div>
+      <div class="hero-links">${demoActive()?'':'<a href="#" onclick="loadDemo();return false">👑 Titta på exemplet Sveriges kungaätter</a>'}${ui.simple?'<a href="#" onclick="applySimple(false);renderAll(true);return false">Visa alla funktioner</a>':'<a href="#" onclick="applySimple(true);applySize(true);renderAll(true);return false">Enkelt läge</a>'}<a href="#" onclick="settingsModal();return false">Inställningar</a>${PWA.can()?'<a href="#" onclick="PWA.install();return false">📲 Installera som app</a>':''}</div>
     </div><div class="hero-art">${heroArt()}</div></div>
     ${newsHTML()}
     ${treesSection()}

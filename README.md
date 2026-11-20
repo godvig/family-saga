@@ -14,7 +14,7 @@ The interface is in Swedish for now, and it understands Swedish sources (househo
 
 ![Släktsagan demo: clicking through the House of Vasa, the tree glides to each new person, then the relationship calculator lights up how Sigrid and Władysław IV are related](docs/screenshots/demo.gif)
 
-*Click someone and the family rearranges around them; ask how two people are related and the chain lights up in the tree. Try it on the [House of Vasa example](https://släktsagan.se/#exempel).*
+*Click someone and the family rearranges around them; ask how two people are related and the chain lights up in the tree. Try it on the [Swedish royal houses example](https://släktsagan.se/#exempel).*
 
 | Fan chart | Relationship calculator | Person card |
 |---|---|---|
@@ -24,7 +24,7 @@ The interface is in Swedish for now, and it understands Swedish sources (househo
 
 ## Live demo
 
-**[Open the example](https://släktsagan.se/#exempel)**: the Swedish royal House of Vasa, from Gustav Vasa (1496) to Queen Christina and Charles X Gustav, with coronations, marriages, places and sources. The example lives in memory only and is never saved. [Open an empty archive](https://saga.godvig.com/) to start with your own family.
+**[Open the example](https://släktsagan.se/#exempel)**: five centuries of Swedish royal houses (Vasa, Palatinate, Hesse, Holstein-Gottorp and Bernadotte), from Gustav Vasa's parents to King Carl XVI Gustaf, with coronations, marriages, adoptions, places and sources. It also shows the less obvious links, such as how Adolf Frederick's claim ran from Charles IX through the margraves of Baden-Durlach. The example lives in memory only and is never saved. [Open an empty archive](https://släktsagan.se/) to start with your own family.
 
 ## Quick start
 
@@ -169,4 +169,4 @@ Done recently: a family book as PDF, undo/redo for every change, a reminder befo
 
 [AGPL-3.0](LICENSE) © Adam Englund. You can use, study and modify Släktsagan freely. If you run a modified version as a network service, you must share your source code too.
 
-Fonts: [Fraunces](https://github.com/undercasetype/Fraunces) and [IBM Plex Sans](https://github.com/IBM/plex), both under the SIL Open Font License 1.1 (see `fonts/`). Map data: [Natural Earth](https://www.naturalearthdata.com) (public domain) via [world-atlas](https://github.com/topojson/world-atlas). The House of Vasa example is compiled from public historical sources (Svenskt biografiskt lexikon, Svenskt kvinnobiografiskt lexikon, the Royal Court). Dates follow the Julian calendar that Sweden used until 1753.
+Fonts: [Fraunces](https://github.com/undercasetype/Fraunces) and [IBM Plex Sans](https://github.com/IBM/plex), both under the SIL Open Font License 1.1 (see `fonts/`). Map data: [Natural Earth](https://www.naturalearthdata.com) (public domain) via [world-atlas](https://github.com/topojson/world-atlas). The royal houses example is compiled from public historical sources (Svenskt biografiskt lexikon, Svenskt kvinnobiografiskt lexikon, the Royal Court and the Royal Palaces). Swedish dates before 1753 follow the Julian calendar that Sweden used until then; living people are marked as living, so they stay private in shared trees.

@@ -1,13 +1,13 @@
 /* Släktsagan · importexport.js — Excel/CSV and GEDCOM import, export (GEDCOM, CSV, JSON backup). */
-import { Backup } from './backup.js?v=59';
-import { exitDemo } from './demo.js?v=59';
-import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=59';
-import { confirmBox, modal } from './modal.js?v=59';
-import { E } from './panel.js?v=59';
-import { renderAll, setFocus } from './router.js?v=59';
-import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=59';
-import { Hist, Store } from './store.js?v=59';
-import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf, localDay } from './util.js?v=59';
+import { Backup } from './backup.js?v=60';
+import { exitDemo } from './demo.js?v=60';
+import { P, blobId, blobUrl, ensurePlace, fullName, partners, personLabel, placeName } from './domain.js?v=60';
+import { confirmBox, modal } from './modal.js?v=60';
+import { E } from './panel.js?v=60';
+import { renderAll, setFocus } from './router.js?v=60';
+import { ALL, COLS, KIND, S, ui, withAll } from './state.js?v=60';
+import { Hist, Store } from './store.js?v=60';
+import { $, clone, dateKey, esc, gedDate, norm, parseDelimited, toast, uid, yearOf, localDay } from './util.js?v=60';
 
 /* ============ IMPORT / EXPORT ============ */
 const FIELDS=[
@@ -51,7 +51,7 @@ function renderImport(){
       </div><div id="expOut"></div></div>
     ${Store.isAdmin?`<div class="box"><h3>Återställ från säkerhetskopia</h3><p>Läs in en .json-fil som du tidigare exporterat härifrån. Befintliga poster med samma id skrivs över, övriga behålls.</p>
       <label class="btn" style="cursor:pointer">Välj säkerhetskopia<input type="file" id="restore" accept=".json" hidden></label></div>
-    <div class="box"><h3>Övrigt</h3><div style="display:flex;gap:8px;flex-wrap:wrap">${Object.keys(S.persons).length?'':'<button class="btn" onclick="loadDemo()">Ladda Vasaätten som exempel</button>'}<button class="btn danger" id="wipe">Töm hela arkivet…</button></div>
+    <div class="box"><h3>Övrigt</h3><div style="display:flex;gap:8px;flex-wrap:wrap">${Object.keys(S.persons).length?'':'<button class="btn" onclick="loadDemo()">Ladda Sveriges kungaätter som exempel</button>'}<button class="btn danger" id="wipe">Töm hela arkivet…</button></div>
       <p class="small muted" style="margin-top:10px">${Store.mode==='db'?'Ditt arkiv sparas i molnet och syns bara för dig tills du väljer att dela sidan. Delar du den kan andra läsa, men bara du och de du gör till redigerare kan ändra.':'Sidan körs utanför claude.ai, så allt sparas bara i den här webbläsaren. Exportera regelbundet!'}</p></div>`:''}
   </div>`;
   v.querySelectorAll('[data-exp]').forEach(b=>b.onclick=()=>doExport(b.dataset.exp).then(()=>{ if(b.dataset.exp==='json') renderImport(true); }));

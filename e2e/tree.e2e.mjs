@@ -14,7 +14,8 @@ test('clicking a card keeps it in place while the tree rearranges around it', as
     .find(([k, r]) => !k.startsWith('g:') && r.x > 260 && r.right < innerWidth - 620 && r.y > 260 && r.bottom < innerHeight - 120)[0]);
   const card = () => page.locator(`#treeSvg g.card[data-k="${k}"] rect.bg`);
   const before = await card().boundingBox();
-  await card().click({ position: { x: before.width - 30, y: 18 } });
+  // click the card itself: its name text is part of the card and may cover any given point
+  await page.locator(`#treeSvg g.card[data-k="${k}"]`).click({ position: { x: before.width - 30, y: 18 } });
   await expect.poll(() => page.evaluate(() => app.ui.focus)).toBe(k);
   const after = await card().boundingBox();
   expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeLessThan(2);
