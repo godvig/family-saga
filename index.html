@@ -31,7 +31,7 @@
 <link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/fraunces-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
 <meta http-equiv="Cache-Control" content="no-cache">
-<link rel="stylesheet" href="src/styles.css?v=60">
+<link rel="stylesheet" href="src/styles.css?v=61">
 <script>
 /* Start-up guard: if the app hasn't started after a while (a file that failed to load, an old
    browser, a blocked script), say so in plain Swedish instead of leaving an empty page. */
@@ -57,8 +57,8 @@
 </script>
 <script src="vendor/d3-7.9.0.min.js"></script>
 <script src="vendor/topojson-client-3.1.0.min.js"></script>
-<script src="src/core.js?v=60"></script>
-<script src="src/config.js?v=60"></script>
+<script src="src/core.js?v=61"></script>
+<script src="src/config.js?v=61"></script>
 </head>
 <body>
 <header>
@@ -97,12 +97,13 @@
   </div>
 </header>
 <div id="demoBar"><span>👑 Du tittar på exemplet <b>Sveriges kungaätter</b>. Inget sparas här – dina egna uppgifter ligger orörda.</span><span style="flex:1"></span><button class="btn primary" id="demoExitBtn" onclick="exitDemo()">Stäng exemplet</button></div>
+<div id="meBar" role="region" aria-label="Vem är du?"></div>
 <main>
   <section id="view"><div class="boot-intro"><h1>Släktsagan</h1><p>Släktträd, solfjäder, källor från kyrkböckerna, tidslinje och karta – gratis, utan konto och med krypterad delning så att hela släkten kan hjälpa till. Appen startar…</p></div></section>
   <aside id="panel"></aside>
 </main>
 
 <script nomodule>document.getElementById('view').innerHTML='<div class="boot-fail"><h2>Webbläsaren är för gammal</h2><p>Släktsagan behöver en nyare webbläsare. Uppdatera, eller öppna sidan i Chrome, Edge, Firefox eller Safari.</p></div>';</script>
-<script type="module" src="src/app/main.js?v=60"></script>
+<script type="module" src="src/app/main.js?v=61"></script>
 </body>
 </html>

@@ -1,9 +1,9 @@
 /* Släktsagan · demo.js — The Swedish royal houses example, from Gustav Vasa to today (in memory only). */
-import { mapState } from './map.js?v=60';
-import { VIEWS, renderAll } from './router.js?v=60';
-import { ALL, applyView, archiveData, ui } from './state.js?v=60';
-import { Hist, Store } from './store.js?v=60';
-import { $, clone, toast, uid } from './util.js?v=60';
+import { mapState } from './map.js?v=61';
+import { VIEWS, renderAll } from './router.js?v=61';
+import { ALL, applyView, archiveData, ui } from './state.js?v=61';
+import { Hist, Store } from './store.js?v=61';
+import { $, clone, toast, uid } from './util.js?v=61';
 
 /* ============ Demo ============ */
 function demoData(){

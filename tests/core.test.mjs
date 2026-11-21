@@ -436,3 +436,52 @@ describe('former names in GEDCOM', () => {
     expect(ps.find((p) => p.given === 'Elisabeth').formerNames).toEqual([{ given: 'Lisbeth', surname: '', type: 'aka' }]);
   });
 });
+
+describe('share links with a person', () => {
+  const { buildShareLink, parseShareLink } = core;
+  const base = 'https://släktsagan.se/';
+  const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+  const R = 'r'.repeat(20) + '_-' + 'R'.repeat(21), E = 'e'.repeat(43), K = 'k'.repeat(43);
+  const split = (url) => { const u = new URL(url); return [u.search, u.hash]; };
+  /** The parser in app versions from before person links, copied verbatim from main.js. */
+  const OLD_RE = /^#(dela|visa)-([0-9a-f-]{36})\.([A-Za-z0-9_-]{40,})(?:\.([A-Za-z0-9_-]{40,}))?$/;
+  const oldParse = (hash) => { const m = hash.match(OLD_RE); return m ? { id: m[2], r: m[3], e: m[4] || '', kind: m[1] === 'visa' ? 'read' : 'edit' } : null; };
+  const formats = [
+    ['old single key', { kind: 'edit', id, r: K }, `#dela-${id}.${K}`],
+    ['edit link', { kind: 'edit', id, r: R, e: E }, `#dela-${id}.${R}.${E}`],
+    ['read link', { kind: 'read', id, r: R }, `#visa-${id}.${R}`],
+  ];
+
+  for (const [name, l, hash] of formats) {
+    it(`${name}: without a person the link is exactly what it was`, () => {
+      expect(buildShareLink(base, l)).toBe(base + hash);
+      expect(parseShareLink('', hash)).toEqual({ kind: l.kind, id, r: l.r, e: l.e || '', person: '' });
+    });
+    it(`${name}: with a person, the fragment and its keys are unchanged`, () => {
+      const url = buildShareLink(base, { ...l, person: 'p_w6hu29nhikx' });
+      expect(url).toBe(`${base}?p=p_w6hu29nhikx${hash}`);
+      const [s, h] = split(url);
+      expect(parseShareLink(s, h)).toEqual({ kind: l.kind, id, r: l.r, e: l.e || '', person: 'p_w6hu29nhikx' });
+    });
+    it(`${name}: an older app version opens the same tree and never sees the person`, () => {
+      const [, h] = split(buildShareLink(base, { ...l, person: 'p_w6hu29nhikx' }));
+      expect(oldParse(h)).toEqual(oldParse(hash));
+      expect(oldParse(h)).toEqual({ id, r: l.r, e: l.e || '', kind: l.kind });
+    });
+  }
+
+  it('a malformed person part is dropped and the link still opens', () => {
+    const hash = `#visa-${id}.${R}`;
+    for (const s of ['?p=', '?p=a%20b', '?p=' + 'x'.repeat(81), '?p=<script>', '?p=a.b', '?q=p_1', '?p=%E0%A4%A']) {
+      expect(parseShareLink(s, hash)).toEqual({ kind: 'read', id, r: R, e: '', person: '' });
+    }
+    expect(parseShareLink('?x=1&p=p_ok', hash).person).toBe('p_ok');
+    expect(buildShareLink(base, { kind: 'read', id, r: R, person: 'bad id' })).toBe(base + hash);
+  });
+
+  it('a person part never makes a broken fragment parse', () => {
+    expect(parseShareLink('?p=p_1', `#visa-${id}.short`)).toBeNull();
+    expect(parseShareLink('?p=p_1', '#start')).toBeNull();
+    expect(parseShareLink('?p=p_1', `#visa-${id}.${R}?p=p_1`)).toBeNull();
+  });
+});

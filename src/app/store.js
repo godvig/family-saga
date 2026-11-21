@@ -1,11 +1,11 @@
 /* Släktsagan · store.js — Saving and loading: undo/redo history, IndexedDB/localStorage, the artifact database, photos and voice memories as blobs. */
-import { Backup, Unpub } from './backup.js?v=60';
-import { purgeLegacyDemo } from './demo.js?v=60';
-import { IDB, P, backfillThumbs, fullName, migrateInline } from './domain.js?v=60';
-import { renderAll } from './router.js?v=60';
-import { Share } from './share.js?v=60';
-import { ALL, COLS, KIND, applyView, archiveData, cols, ui } from './state.js?v=60';
-import { $, clone, toast } from './util.js?v=60';
+import { Backup, Unpub } from './backup.js?v=61';
+import { purgeLegacyDemo } from './demo.js?v=61';
+import { IDB, P, backfillThumbs, fullName, migrateInline } from './domain.js?v=61';
+import { renderAll } from './router.js?v=61';
+import { Share } from './share.js?v=61';
+import { ALL, COLS, KIND, applyView, archiveData, cols, ui } from './state.js?v=61';
+import { $, clone, toast } from './util.js?v=61';
 
 /* ============ Store ============ */
 /* ============ Undo / redo ============
@@ -71,8 +71,9 @@ const Store={
       this.subscribe();
     }else{
       this.mode='local';
-      if(Share.pendingJoin){const j=Share.pendingJoin; Share.pendingJoin=null; await Share.join(j.id,j.r,j.e,j.kind);}
+      const j=Share.pendingJoin; if(j){Share.pendingJoin=null; await Share.join(j.id,j.r,j.e,j.kind);}
       await this.loadLocal(); this.loaded=true; purgeLegacyDemo(); applyView();
+      if(j&&j.person&&Share.st.active===j.id) Share.arrive(j.person);
       // IndexedDB is asynchronous and may not finish while a page closes, so unsaved edits
       // also get a synchronous emergency copy that the next start picks up.
       const flush=()=>{ if(!this._dirty) return; try{localStorage.setItem('klansagan-unsaved',JSON.stringify({k:Share.lsKey(),data:archiveData()}));}catch(e){} this.saveNow(); };

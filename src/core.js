@@ -517,6 +517,45 @@
     return { pub, priv };
   }
 
+  /* ------------------------------------------------ Share links */
+
+  /**
+   * The keys live in the #fragment, which never reaches a server:
+   *   #dela-<tree>.<key>          old single-key tree (reads and edits)
+   *   #dela-<tree>.<read>.<edit>  edit link
+   *   #visa-<tree>.<read>         read-only link
+   * A link that opens the tree from one person adds ?p=<person id> in front of the
+   * fragment. The fragment is left exactly as it was, so the keys are read the same way,
+   * and app versions from before this only look at location.hash: they open the tree as
+   * usual and never see the person. The person id is only a starting point, not a key.
+   */
+  const LINK_RE = /^#(dela|visa)-([0-9a-f-]{36})\.([A-Za-z0-9_-]{40,})(?:\.([A-Za-z0-9_-]{40,}))?$/;
+  const PERSON_RE = /^[A-Za-z0-9_-]{1,80}$/;
+
+  /**
+   * @param {string} base  origin + path, e.g. https://släktsagan.se/
+   * @param {{kind:'edit'|'read', id:string, r:string, e?:string, person?:string}} l
+   */
+  function buildShareLink(base, l) {
+    const keys = l.kind === 'read' ? l.r : l.e ? `${l.r}.${l.e}` : l.r;
+    const p = l.person && PERSON_RE.test(l.person) ? `?p=${l.person}` : '';
+    return `${base}${p}#${l.kind === 'read' ? 'visa' : 'dela'}-${l.id}.${keys}`;
+  }
+
+  /**
+   * Read a share link from a URL's search and hash. A missing or malformed person part is
+   * dropped; the rest of the link still opens.
+   * @param {string} search  location.search ('' or '?…') @param {string} hash  location.hash
+   * @returns {{kind:'edit'|'read', id:string, r:string, e:string, person:string}|null}
+   */
+  function parseShareLink(search, hash) {
+    const m = String(hash || '').match(LINK_RE); if (!m) return null;
+    let person = '';
+    try { person = new URLSearchParams(search || '').get('p') || ''; } catch (e) { person = ''; }
+    if (!PERSON_RE.test(person)) person = '';
+    return { kind: m[1] === 'visa' ? 'read' : 'edit', id: m[2], r: m[3], e: m[4] || '', person };
+  }
+
   /* ------------------------------------------------ What's new since your last visit */
 
   /** Swedish names for person fields, for "Karl: födelsedatum, bilder". */
@@ -946,7 +985,7 @@
     };
   }
 
-  const api = { onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret, sha256hex, keyTag, kidsIndex, isLiving, livingInfo, likelyDeceased, redactLiving, splitForReaders, joinPrivate, diffNews, addNews, pruneNews };
+  const api = { onThisDay, COLS, parseSwedishCitation, seriesType, COUNTY, parseGedcom, decodeGedcom, fromGedDate, sourceType, createHistory, yearOf, dateKey, MONTHS, fmtDate, whenText, gedDate, genitive, slugify, parseDelimited, nrm, lev, dupScore, computeHidden, upMap, blood, bloodTerm, components, docHash, hashArchive, merge3, b64u, unb64u, newKey, encryptJSON, decryptJSON, writeSecret, sha256hex, keyTag, kidsIndex, isLiving, livingInfo, likelyDeceased, redactLiving, splitForReaders, joinPrivate, buildShareLink, parseShareLink, diffNews, addNews, pruneNews };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   // @ts-ignore — browser global
   root.KinCore = api;

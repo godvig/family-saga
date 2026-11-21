@@ -1,13 +1,13 @@
 /* Släktsagan · views.js — Views that hide branches. */
-import { P, fullName, personLabel } from './domain.js?v=60';
-import { mapState } from './map.js?v=60';
-import { confirmBox, modal } from './modal.js?v=60';
-import { personByLabel } from './panel.js?v=60';
-import { renderAll } from './router.js?v=60';
-import { Share, shareTreeModal } from './share.js?v=60';
-import { ALL, HIDDEN, activeView, applyView, ui, viewCounts, withAll } from './state.js?v=60';
-import { Store } from './store.js?v=60';
-import { $, clone, computeHidden, esc, genitive, slugify, toast, uid } from './util.js?v=60';
+import { P, fullName, homeIn, personLabel } from './domain.js?v=61';
+import { mapState } from './map.js?v=61';
+import { confirmBox, modal } from './modal.js?v=61';
+import { personByLabel } from './panel.js?v=61';
+import { renderAll } from './router.js?v=61';
+import { Share, shareTreeModal } from './share.js?v=61';
+import { ALL, HIDDEN, activeView, applyView, ui, viewCounts, withAll } from './state.js?v=61';
+import { Store } from './store.js?v=61';
+import { $, clone, computeHidden, esc, genitive, slugify, toast, uid } from './util.js?v=61';
 
 /* ============ Views (dölj/visa) & sharing ============ */
 const ARTIFACT_URL='https://claude.ai/artifact/JvGs2s1WF8hstNwPqi7SW1';
@@ -33,7 +33,7 @@ function openViewMenu(){
   pop.querySelectorAll('[data-a]').forEach(el=>el.onclick=()=>{pop.classList.remove('open'); const a=el.dataset.a; if(a==='new') viewModal(null); if(a==='edit') viewModal(activeView()); if(a==='share') shareModal(activeView());});
 }
 function ruleLabel(kind,id){const p=ALL.persons[id]; const n=p?fullName(p):'(borttagen person)'; return kind==='hide'?`Dölj ${n}`:kind==='hideUp'?`Dölj ${genitive(n)} släkt bakåt`:`Dölj ${genitive(n)} ättlingar`;}
-function baseForView(){return Object.values(ALL.persons).find(p=>p.home)||ALL.persons[ui.focus]||null;}
+function baseForView(){return homeIn(ALL.persons)||ALL.persons[ui.focus]||null;}
 function quickBranches(){
   const B=baseForView(); if(!B) return {B:null,rows:[]}; const A=ALL.persons, rows=[];
   const side=(pid,label,sub)=>{const p=A[pid]; if(!p) return; rows.push({id:p.id,label,who:fullName(p),lvl:0});

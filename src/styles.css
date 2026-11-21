@@ -287,6 +287,13 @@ table.list{width:100%;border-collapse:collapse;background:var(--card);border:1px
 #demoBar{display:none;align-items:center;gap:12px;padding:8px 18px;background:var(--warnbg);color:var(--warnfg);border-bottom:1px solid var(--line);font-size:13.5px;flex:none;flex-wrap:wrap}
 #demoBar.on{display:flex}
 #demoBar .btn{padding:4px 11px;font-size:12.5px}
+#meBar{display:none;align-items:center;gap:8px;padding:8px 18px;background:var(--accent2);color:var(--ink);border-bottom:1px solid var(--line);font-size:14px;flex:none;flex-wrap:wrap}
+#meBar.on{display:flex}
+#meBar .btn{padding:5px 12px;font-size:13px}
+.sp-kind{margin:4px 0 6px}
+.sp-warn{color:var(--warn)}
+.sopt small.sp-warn{color:var(--warn)}.sopt small[hidden]{display:none}
+.sh-intro{background:var(--warnbg);color:var(--warnfg);padding:8px 12px;border-radius:8px;line-height:1.5}
 
 /* Start page */
 .start{max-width:1040px;margin:0 auto;padding:44px 28px 60px}
@@ -425,7 +432,7 @@ table.list{width:100%;border-collapse:collapse;background:var(--card);border:1px
 .sizebtn{border:1px solid var(--line);background:var(--card);border-radius:8px;height:34px;padding:0 9px;cursor:pointer;color:var(--ink2);font-weight:600;font-size:12px;font-family:var(--serif)}
 .sizebtn span{font-size:16px;margin-left:1px}
 .sizebtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-html[data-size=lg] #panel,html[data-size=lg] .start,html[data-size=lg] .view-pad,html[data-size=lg] .ov .modal,html[data-size=lg] .tree-tools,html[data-size=lg] #demoBar,html[data-size=lg] .toast,html[data-size=lg] .empty{zoom:1.2}
+html[data-size=lg] #panel,html[data-size=lg] .start,html[data-size=lg] .view-pad,html[data-size=lg] .ov .modal,html[data-size=lg] .tree-tools,html[data-size=lg] #demoBar,html[data-size=lg] #meBar,html[data-size=lg] .toast,html[data-size=lg] .empty{zoom:1.2}
 
 /* ---- Portrait slot on tree cards ---- */
 .ph-slot rect{fill:var(--paper2);stroke:var(--line);stroke-width:1}

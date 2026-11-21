@@ -1,10 +1,10 @@
 /* Släktsagan · domain.js — Family logic on top of the store: names, places, relatives, ancestors, blobs and thumbnails. */
-import { loadImg } from './media.js?v=60';
-import { renderAll, select, setFocus } from './router.js?v=60';
-import { Share } from './share.js?v=60';
-import { ALL, S, applyView, bumpRev, ui } from './state.js?v=60';
-import { Store } from './store.js?v=60';
-import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=60';
+import { loadImg } from './media.js?v=61';
+import { renderAll, select, setFocus } from './router.js?v=61';
+import { Share } from './share.js?v=61';
+import { ALL, S, applyView, bumpRev, ui } from './state.js?v=61';
+import { Store } from './store.js?v=61';
+import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=61';
 
 /* ============ Domain helpers ============ */
 const P=id=>S.persons[id];
@@ -164,9 +164,19 @@ async function sharpenOldThumbs(){
 /** All image ids referenced by the archive. */
 function blobRefs(data){const out=new Set(); for(const col of ['persons','places','sources']) for(const o of Object.values(data[col]||{})) for(const m of o.media||[]){const id=blobId(m); if(id) out.add(id); const t=blobId({url:m.thumb}); if(t) out.add(t);} return out;}
 function avatarUrl(p){const imgs=(p.media||[]).filter(isImg); const m=imgs.find(m=>m.profile)||imgs[0]; return m?thumbUrl(m):null;}
-const homePerson=()=>Object.values(S.persons).find(p=>p.home);
+/** "Jag": in a shared tree this browser's own choice first, then the tree's flag. */
+/* "Jag". In a shared tree it is this browser's own choice. The tree's home flag travels with
+   the tree, so it only counts in the browser that created the share (it is the sharer's);
+   someone who joined through a link has no "jag" until they pick one. */
+const homeIn=ps=>{
+  if(Store.mode!=='db'&&Share.cur()){const me=Share.meId(); if(me&&ps[me]) return ps[me]; if(!Share.ownTree()) return undefined;}
+  return Object.values(ps).find(p=>p.home);
+};
+const homePerson=()=>homeIn(S.persons);
 function goHome(){const h=homePerson(); if(h) setFocus(h.id); else {const first=Object.values(S.persons).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''))[0]; if(first) setFocus(first.id);} ui.sel=null; ui.treeKey=null; ui.plQuery=''; if(location.hash!=='#trad') location.hash='trad'; else renderAll(true); window.scrollTo(0,0);}
-async function setHome(id){for(const p of Object.values(ALL.persons)) if(p.home&&p.id!==id){const q=clone(p); delete q.home; await Store.put(q,{silent:true});} const q=clone(P(id)); q.home=true; await Store.put(q); toast('★ '+fullName(q)+' är markerad som ”jag”. Startsidan och släktskap utgår nu härifrån.',4500);}
+async function setHome(id){
+  if(Store.mode!=='db'&&Share.setMe(id)){ ui.treeKey=null; renderAll(true); toast('★ '+fullName(P(id))+' är markerad som ”jag” i den här webbläsaren. Startsidan och släktskap utgår nu härifrån.',4500); return; }
+  for(const p of Object.values(ALL.persons)) if(p.home&&p.id!==id){const q=clone(p); delete q.home; await Store.put(q,{silent:true});} const q=clone(P(id)); q.home=true; await Store.put(q); toast('★ '+fullName(q)+' är markerad som ”jag”. Startsidan och släktskap utgår nu härifrån.',4500);}
 function ancestorsOf(id,max=50){const out=new Set();const walk=(i,d)=>{const p=P(i);if(!p||d>max)return;for(const k of ['fatherId','motherId']){if(p[k]&&!out.has(p[k])){out.add(p[k]);walk(p[k],d+1);}}};walk(id,0);return out;}
 function descendantsOf(id){const out=new Set();const walk=i=>{for(const c of children(i)){if(!out.has(c.id)){out.add(c.id);walk(c.id);}}};walk(id);return out;}
 function scopeSet(scope){
@@ -203,4 +213,4 @@ function ensurePlace(name){
 function ageAt(p){const b=yearOf(p.birthDate),d=yearOf(p.deathDate); if(b&&d) return d-b; return null;}
 function personLabel(p){const ls=lifespan(p); return fullName(p)+(ls?' ('+ls.replace(/\s/g,'')+')':'');}
 
-export { sharpenOldThumbs, resample, bestUrl, NAME_TYPES, formerNamesText, allNames, sharedIndex, P, givenName, shortName, fullName, givenHtml, fullHtml, initials, lifespan, sexColor, placeName, children, partners, siblings, isImg, isAudio, avatarMedia, cropPct, avImg, BLOB, BLOB_WAIT, IDB, PIXEL, blobId, thumbUrl, makeThumb, murl, _blobTimer, needBlob, loadBlobs, blobUrl, storeBlob, migrateInline, backfillThumbs, blobRefs, avatarUrl, homePerson, goHome, setHome, ancestorsOf, descendantsOf, scopeSet, lifeEvents, ensurePlace, ageAt, personLabel };
+export { sharpenOldThumbs, resample, bestUrl, NAME_TYPES, formerNamesText, allNames, sharedIndex, P, givenName, shortName, fullName, givenHtml, fullHtml, initials, lifespan, sexColor, placeName, children, partners, siblings, isImg, isAudio, avatarMedia, cropPct, avImg, BLOB, BLOB_WAIT, IDB, PIXEL, blobId, thumbUrl, makeThumb, murl, _blobTimer, needBlob, loadBlobs, blobUrl, storeBlob, migrateInline, backfillThumbs, blobRefs, avatarUrl, homeIn, homePerson, goHome, setHome, ancestorsOf, descendantsOf, scopeSet, lifeEvents, ensurePlace, ageAt, personLabel };

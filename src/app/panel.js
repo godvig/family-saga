@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=60';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=60';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=60';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=60';
-import { backPerson, bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=60';
-import { Share, askName } from './share.js?v=60';
-import { logSection } from './research.js?v=60';
-import { linkModal } from './start.js?v=60';
-import { ALL, S, ui } from './state.js?v=60';
-import { Hist, Store } from './store.js?v=60';
-import { openCard } from './theme.js?v=60';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=60';
-import { fillNames, hideModal } from './views.js?v=60';
+import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=61';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=61';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=61';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=61';
+import { backPerson, bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=61';
+import { Share, askName, callName, canSharePerson, sharePersonModal } from './share.js?v=61';
+import { logSection } from './research.js?v=61';
+import { linkModal } from './start.js?v=61';
+import { ALL, S, ui } from './state.js?v=61';
+import { Hist, Store } from './store.js?v=61';
+import { openCard } from './theme.js?v=61';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=61';
+import { fillNames, hideModal } from './views.js?v=61';
 
 /* ============ PANEL ============ */
 function renderPanel(){
@@ -50,7 +50,8 @@ function personPanel(p){
       <button class="btn sm" data-act="focus">Visa i trädet</button>
       <button class="btn sm" data-act="rel">Hur är vi släkt?</button>
       ${ed?'<button class="btn sm" data-act="hide" title="Dölj personen eller en hel gren i en vy">👁 Dölj i vyn…</button>':''}
-      ${ed?`<button class="btn sm ${p.home?'primary':''}" data-act="home" title="Startsidan, trädet och släktskap utgår från den här personen">${p.home?'★ Det här är jag':'Det här är jag'}</button>`:''}
+      ${ed||Share.cur()?(me=>`<button class="btn sm ${me?'primary':''}" data-act="home" title="Startsidan, trädet och släktskap utgår från den här personen">${me?'★ Det här är jag':'Det här är jag'}</button>`)(homePerson()&&homePerson().id===p.id):''}
+      ${canSharePerson()?`<button class="btn sm" data-act="share">🔗 Dela med ${esc(callName(p))}</button>`:''}
       ${ed?`<button class="btn sm" data-act="edit">Redigera</button><button class="btn sm ghost danger" data-act="delp">Ta bort</button>`:''}
     </div></div>
   ${p.updatedBy&&Store.user?`<div class="sec small muted" style="padding:8px 20px">Senast ändrad ${esc(fmtDate((p.updatedAt||'').slice(0,10)))} av <span data-uid="${esc(p.updatedBy)}">…</span></div>`:''}
@@ -250,7 +251,8 @@ function bindPersonPanel(p){
     if(act==='card'){ ui.sel=null; openCard(p.id); } // the card has it all: fold the side panel away
     if(act==='hide') hideModal(p);
     if(act==='rel'){ui.relB=p.id; if(!ui.relA||ui.relA===p.id) ui.relA=(homePerson()&&homePerson().id!==p.id)?homePerson().id:(ui.focus!==p.id?ui.focus:null); location.hash='slaktskap';}
-    if(act==='home'&&!p.home) setHome(p.id);
+    if(act==='home'&&!(homePerson()&&homePerson().id===p.id)) setHome(p.id);
+    if(act==='share') sharePersonModal(p.id);
     if(act==='delp') confirmBox(`Ta bort ${fullName(p)}?`,'Personen tas bort och kopplingar till familjemedlemmar lossas. Du kan ångra det efteråt med ↶ eller Ctrl+Z.','Ta bort',()=>deletePerson(p.id));
     if(act==='addev') eventForm(p,null);
     if(act==='addcite') citeForm(p);

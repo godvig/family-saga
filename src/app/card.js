@@ -1,14 +1,15 @@
 /* Släktsagan · card.js — The person card page. */
-import { P, bestUrl, formerNamesText, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings } from './domain.js?v=60';
-import { openLightbox } from './media.js?v=60';
-import { openPersonModal } from './modal.js?v=60';
-import { bindVoices, citeLinks, voiceRows } from './panel.js?v=60';
-import { personPdf } from './print.js?v=60';
-import { emptyState, setFocus } from './router.js?v=60';
-import { S, ui } from './state.js?v=60';
-import { Store } from './store.js?v=60';
-import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=60';
-import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=60';
+import { P, bestUrl, formerNamesText, ageAt, avImg, avatarUrl, children, fullName, homePerson, initials, isAudio, isImg, lifeEvents, partners, placeName, sexColor, shortName, siblings } from './domain.js?v=61';
+import { openLightbox } from './media.js?v=61';
+import { openPersonModal } from './modal.js?v=61';
+import { bindVoices, citeLinks, voiceRows } from './panel.js?v=61';
+import { personPdf } from './print.js?v=61';
+import { emptyState, setFocus } from './router.js?v=61';
+import { S, ui } from './state.js?v=61';
+import { callName, canSharePerson, sharePersonModal } from './share.js?v=61';
+import { Store } from './store.js?v=61';
+import { bindChips, chipHTML, listJoin, numw, openCard } from './theme.js?v=61';
+import { $, dateKey, esc, fmtDate, whenText, yearOf } from './util.js?v=61';
 
 /* ============ PERSON CARD ============ */
 function storyOf(p){
@@ -61,7 +62,7 @@ function renderCard(){
     ${(()=>{const b=history.state&&history.state.cardId===p.id&&P(history.state.prev); return b?`<button class="btn sm pc-back" data-pc="back">← Tillbaka till ${esc(shortName(b))}</button>`:'';})()}
     <div class="pc-head"><div class="pc-photo" style="box-shadow:0 0 0 2px ${sexColor(p)},var(--shadow)">${av?avImg(p):esc(initials(p))}</div>
       <div><h1>${esc(fullName(p))}</h1>${formerNamesText(p)?`<div class="fname">${esc(formerNamesText(p))}</div>`:''}<div class="life">${esc([p.birthDate?'* '+fmtDate(p.birthDate):'',p.deathDate?'† '+fmtDate(p.deathDate):''].filter(Boolean).join('   '))}${p.occupation?`<br>${esc(p.occupation)}`:''}</div>
-      <div class="acts">${Store.canEdit?'<button class="btn" data-pc="edit">Redigera</button>':''}<button class="btn" data-pc="tree">Visa i trädet</button><button class="btn" data-pc="fan">Solfjäder</button><button class="btn" data-pc="rel">Hur är vi släkt?</button><button class="btn" data-pc="pdf">⎙ Skriv ut / PDF</button></div></div></div>
+      <div class="acts">${Store.canEdit?'<button class="btn" data-pc="edit">Redigera</button>':''}<button class="btn" data-pc="tree">Visa i trädet</button><button class="btn" data-pc="fan">Solfjäder</button><button class="btn" data-pc="rel">Hur är vi släkt?</button><button class="btn" data-pc="pdf">⎙ Skriv ut / PDF</button>${canSharePerson()?`<button class="btn" data-pc="share">🔗 Dela med ${esc(callName(p))}</button>`:''}</div></div></div>
     <div class="pc-grid"><div>
       ${story||Store.canEdit?`<h3>Livsberättelse</h3><p class="story">${story?esc(story):'<span class="muted">Lägg till datum, platser och händelser så skrivs en berättelse automatiskt.</span>'}</p>`:''}
       ${imgs.some(isAudio)?`<h3>Röstminnen</h3><div class="vms">${voiceRows(p)}</div>`:''}
@@ -86,6 +87,7 @@ function renderCard(){
     if(a==='fan'){setFocus(p.id); ui.fanKey=null; location.hash='solfjader';}
     if(a==='rel'){ui.relB=p.id; const h=homePerson(); ui.relA=h&&h.id!==p.id?h.id:null; location.hash='slaktskap';}
     if(a==='pdf') personPdf(p);
+    if(a==='share') sharePersonModal(p.id);
   });
 }
 

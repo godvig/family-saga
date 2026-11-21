@@ -1,12 +1,12 @@
 /* Släktsagan · share.js — Sharing: end-to-end encrypted trees on Supabase, publish, merge, history. */
-import { Unpub } from './backup.js?v=60';
-import { BLOB, IDB, blobRefs, fullName, homePerson, migrateInline } from './domain.js?v=60';
-import { confirmBox, modal } from './modal.js?v=60';
-import { renderAll } from './router.js?v=60';
-import { trees } from './start.js?v=60';
-import { ALL, applyView, archiveData, cols, ui } from './state.js?v=60';
-import { Hist, Store, setStatus } from './store.js?v=60';
-import { $, esc, toast } from './util.js?v=60';
+import { Unpub } from './backup.js?v=61';
+import { BLOB, IDB, P, blobRefs, fullName, homePerson, migrateInline } from './domain.js?v=61';
+import { confirmBox, modal } from './modal.js?v=61';
+import { renderAll, setFocus } from './router.js?v=61';
+import { trees } from './start.js?v=61';
+import { ALL, applyView, archiveData, cols, ui } from './state.js?v=61';
+import { Hist, Store, setStatus } from './store.js?v=61';
+import { $, esc, toast } from './util.js?v=61';
 
 /* ============ Boot ============ */
 /* ============ SHARING (Supabase, end-to-end encrypted) ============
@@ -29,8 +29,30 @@ const Share={
   cur(){return this.st.active?this.st.trees[this.st.active]:null;},
   lsKey(){return this.st.active?'klansagan-tree-'+this.st.active:'klansagan-v1';},
   base(){return location.origin+location.pathname;},
-  link(id=this.st.active){const t=this.st.trees[id]; if(!t) return ''; if(t.v!==2) return `${this.base()}#dela-${id}.${t.key}`; return t.e?`${this.base()}#dela-${id}.${t.r}.${t.e}`:this.readLink(id);},
-  readLink(id=this.st.active){const t=this.st.trees[id]; return t&&t.v===2?`${this.base()}#visa-${id}.${t.r}`:'';},
+  /** The edit link (a reader gets the read link). person: open the tree from that person. */
+  link(id=this.st.active,person=''){const t=this.st.trees[id]; if(!t) return ''; if(t.v!==2) return KinCore.buildShareLink(this.base(),{kind:'edit',id,r:t.key,person}); return t.e?KinCore.buildShareLink(this.base(),{kind:'edit',id,r:t.r,e:t.e,person}):this.readLink(id,person);},
+  readLink(id=this.st.active,person=''){const t=this.st.trees[id]; return t&&t.v===2?KinCore.buildShareLink(this.base(),{kind:'read',id,r:t.r,person}):'';},
+  /**
+   * "Det här är jag" in a shared tree belongs to this browser, not to the tree: the person
+   * documents travel to everyone, so a home flag there would be the sharer's. Unset, the
+   * tree's own flag (the sharer's choice, from before) still counts.
+   */
+  meId(){if(Store.mode==='db') return null; const t=this.cur(); return t&&t.me||null;},
+  /** Did this browser create the active share? create() stamps t.created, join() t.joined (both since sharing began; rekey keeps them). */
+  ownTree(){const t=this.cur(); return !!t&&!!t.created&&!t.joined;},
+  setMe(id){const t=this.cur(); if(!t) return false; t.me=id; this.save(); return true;},
+  /**
+   * After a link with a person opened: focus them and, if this browser hasn't picked who it
+   * is in this tree, ask once. Never sets "jag" by itself – links get forwarded.
+   */
+  arrive(pid){
+    const t=this.cur(); if(!t||!pid||!P(pid)){ hideMeBar(); return; }
+    setFocus(pid); ui.sel=null; ui.treeKey=null; ui.treeCenter=pid;
+    // the row first, so the tree is laid out in the space that is left
+    const home=homePerson();
+    if(t.me||(home&&home.id===pid)||(t.noMe||[]).includes(pid)) hideMeBar(); else showMeBar(pid);
+    if(location.hash!=='#trad') location.replace('#trad'); else renderAll(true);
+  },
   readOnly(){const t=this.cur(); return !!t&&t.v===2&&!t.e;},
   /** The key whose write secret publishes, or null for readers. */
   wkey(t=this.cur()){return !t?null:t.v===2?(t.e||null):t.key;},
@@ -222,7 +244,7 @@ const Share={
     Object.assign(ALL,v.data); Hist.clear();
     applyView(); Store.saveNow(); ui.treeKey=null; ui.sel=null; renderAll(true); this.updateStatus();
     toast(`Trädet ser nu ut som i version ${ver}. Tryck Publicera för att alla ska få det.`,7000,{label:'Publicera',fn:()=>this.publish()});},
-  async switchTo(id){await Store.saveNow(); this.st.active=id||null; this.newer=false; this.save(); this.applyRole(); await Store.loadLocal(); applyView(); ui.focus=null; ui.sel=null; ui.treeKey=null; this.updateStatus(); renderAll(true); if(id) this.check(true);},
+  async switchTo(id){hideMeBar(); await Store.saveNow(); this.st.active=id||null; this.newer=false; this.save(); this.applyRole(); await Store.loadLocal(); applyView(); ui.focus=null; ui.sel=null; ui.treeKey=null; this.updateStatus(); renderAll(true); if(id) this.check(true);},
   /**
    * New keys for the active tree, published as a new version in one step.
    * what: 'upgrade' (old single-key tree → read-only links), 'edit' (new edit link),
@@ -254,6 +276,65 @@ const Share={
   },
   startPolling(){ if(this._poll) return; this._poll=setInterval(()=>this.check(true),60000); document.addEventListener('visibilitychange',()=>{if(!document.hidden) this.check(true);}); if(this.cur()) setTimeout(()=>this.check(true),1500); },
 };
+/* "Är du …?" – the row at the top after a link to a person opened. */
+function hideMeBar(){const b=$('#meBar'); if(b){b.classList.remove('on'); b.innerHTML='';}}
+function showMeBar(pid){
+  const b=$('#meBar'), p=P(pid); if(!b||!p) return;
+  b.innerHTML=`<span>Är du <b>${esc(fullName(p))}</b>?</span><span style="flex:1"></span><button class="btn primary" data-me="yes">Ja, det är jag</button><button class="btn" data-me="no">Nej</button><button class="iconbtn" data-me="no" title="Stäng" aria-label="Stäng"><svg width="16" height="16" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.6"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>`;
+  b.classList.add('on');
+  b.querySelectorAll('[data-me]').forEach(x=>x.onclick=()=>{
+    const t=Share.cur(); hideMeBar(); if(!t) return;
+    if(x.dataset.me==='yes'){ Share.setMe(pid); ui.treeKey=null; renderAll(true); toast('★ '+fullName(p)+' är markerad som ”jag” i den här webbläsaren. Startsidan och släktskap utgår nu härifrån.',5000); }
+    else { t.noMe=[...new Set([...(t.noMe||[]),pid])]; Share.save(); }
+  });
+}
+/** Tilltalsnamn: the call name, or the first given name. */
+const callName=p=>p.callName||(p.given||'').trim().split(/\s+/)[0]||fullName(p);
+/** Can this person's share button be shown at all? */
+const canSharePerson=()=>Share.enabled()&&!Store.demo;
+/**
+ * "Dela med <namn>": a link that opens the tree from this person. A tree that isn't shared
+ * yet goes through the usual sharing first. Read link by default; a reader only has that.
+ */
+function sharePersonModal(pid){
+  const p=P(pid); if(!p) return;
+  if(!Share.enabled()){toast('Delning är inte påslagen på den här sidan.');return;}
+  if(Store.demo){toast('Stäng exemplet först – exemplet kan inte delas.');return;}
+  const nm=callName(p);
+  if(!Share.cur()){ shareTreeModal({intro:`För att dela med ${esc(nm)} behöver släktträdet först delas. Sedan får du en länk som öppnar trädet från ${esc(nm)}.`,then:()=>sharePersonModal(pid)}); return; }
+  const t=Share.cur(), ro=Share.readOnly(), v2=t.v===2;
+  const readUrl=v2?Share.readLink(Share.st.active,pid):'', editUrl=ro?'':Share.link(Share.st.active,pid);
+  const living=p.living||KinCore.isLiving(p,ALL.persons,new Date().getFullYear());
+  const unpublished=!ro&&!(t.base&&t.base.persons&&t.base.persons[pid]);
+  const msg=url=>`Hej ${nm}! Här är vårt släktträd, sett från dig.\n${url}`;
+  const canShare=typeof navigator.share==='function';
+  modal(`<h3>Dela med ${esc(nm)}</h3>
+    <p class="muted" style="margin-top:-4px;line-height:1.5">Länken öppnar släktträdet med ${esc(fullName(p))} i mitten. ${esc(nm)} får frågan om det är hen, och kan då välja sig själv som ”jag”. Alla med länken ser samma träd.</p>
+    ${ro||!v2?'':`<div class="sp-kind"><label class="sopt"><input type="radio" name="spK" value="read" checked><span><b>👀 Läslänk – kan bara titta</b></span></label>
+      <label class="sopt"><input type="radio" name="spK" value="edit"><span><b>✏️ Redigeringslänk – kan ändra</b><small class="sp-warn" hidden>${esc(nm)} kan då lägga till, ändra och ta bort i trädet, och publicera det för alla.</small></span></label></div>`}
+    ${!v2&&!ro?`<p class="small sp-warn">Trädet har bara en länk, och den kan ändra. ${esc(nm)} kan lägga till, ändra och ta bort i trädet. <a href="#" id="spUpgrade">Skapa en läslänk</a></p>`:''}
+    ${living?`<p class="small sh-living sp-living">🔒 ${esc(nm)} räknas som levande. Med en läslänk ser hen namn och födelseår för levande släktingar, men inte datum, bilder eller anteckningar.</p>`:''}
+    ${unpublished?`<p class="small sp-warn">${esc(nm)} är inte publicerad än och syns inte för andra. <a href="#" id="spPub">Publicera nu</a></p>`:''}
+    <label class="f"><span>Meddelande</span><textarea class="t" id="spMsg" rows="4">${esc(msg(v2?readUrl:editUrl))}</textarea></label>
+    <div class="foot"><button class="btn" data-x>Stäng</button><button class="btn primary" id="spGo">${canShare?'Dela':'Kopiera'}</button></div>`,
+  (ov,close)=>{const q=x=>ov.querySelector(x), ta=/** @type {HTMLTextAreaElement} */(q('#spMsg'));
+    q('[data-x]').onclick=close;
+    let cur=v2?readUrl:editUrl;
+    ov.querySelectorAll('input[name=spK]').forEach(r=>r.onchange=()=>{
+      const next=/** @type {HTMLInputElement} */(r).value==='edit'?editUrl:readUrl; if(next===cur) return;
+      ta.value=ta.value.includes(cur)?ta.value.replace(cur,next):ta.value.replace(/\s*$/,'')+'\n'+next; cur=next;
+      const w=/** @type {HTMLElement} */(q('.sp-kind .sp-warn')); if(w) w.hidden=cur!==editUrl;
+    });
+    {const u=q('#spUpgrade'); if(u) u.onclick=e=>{e.preventDefault(); close(); shareTreeModal();};}
+    {const b=q('#spPub'); if(b) b.onclick=async e=>{e.preventDefault(); b.textContent='Publicerar…'; const ok=await Share.publish(); close(); if(ok) sharePersonModal(pid);};}
+    const go=/** @type {HTMLButtonElement} */(q('#spGo'));
+    const copy=async()=>{try{await navigator.clipboard.writeText(ta.value);}catch(e){ta.select(); document.execCommand('copy');} go.textContent='Kopierat ✓';};
+    go.onclick=async()=>{
+      if(!canShare) return copy();
+      try{ await navigator.share({text:ta.value}); }catch(e){ if(e&&e.name!=='AbortError') await copy(); }
+    };
+  });
+}
 function treeTitle(){const h=homePerson(); const t=trees()[0]; return t?t.name:(h?'Släkten kring '+fullName(h):'Släktträd');}
 async function historyModal(){
   const t=Share.cur(); if(!t) return;
@@ -312,7 +393,8 @@ function livingModal(after){
     };
   });
 }
-function shareTreeModal(){
+/** opts.then: run instead of reopening this dialog once a new share is created; opts.intro: a line on top of the create step. */
+function shareTreeModal(opts={}){
   if(!Share.enabled()){toast('Delning är inte påslagen på den här sidan.');return;}
   if(Store.demo){toast('Stäng exemplet först – exemplet kan inte delas.');return;}
   const t=Share.cur(), others=Object.entries(Share.st.trees).filter(([id])=>id!==Share.st.active);
@@ -350,7 +432,7 @@ function shareTreeModal(){
     ${otherList}
     <div class="foot"><button class="btn" data-x>Stäng</button></div>`
   :`<h3>Dela släktträdet</h3>
-    <p style="line-height:1.55">Du får en länk som du skickar till släkten. Alla med länken kan titta och lägga till uppgifter. Deras ändringar syns för de andra när de trycker <b>Publicera</b>.</p>
+    ${opts.intro?`<p class="sh-intro">${opts.intro}</p>`:''}<p style="line-height:1.55">Du får en länk som du skickar till släkten. Alla med länken kan titta och lägga till uppgifter. Deras ändringar syns för de andra när de trycker <b>Publicera</b>.</p>
     <ul class="sh-list"><li>👀 Du får också en läslänk för dem som bara ska titta. Där visas personer som lever bara med namn och födelseår.</li><li>🔒 Trädet krypteras i din webbläsare. Nyckeln finns bara i länken – varken servern eller någon annan kan läsa det.</li><li>👥 Ingen behöver konto eller lösenord.</li><li>💾 Ditt nuvarande arkiv blir startpunkten. Ditt lokala arkiv finns kvar orört.</li></ul>
     ${Object.keys(ALL.persons).length?'':'<p class="muted">Arkivet är tomt – lägg in några personer först.</p>'}
     ${otherList}
@@ -370,9 +452,9 @@ function shareTreeModal(){
     const dc=q('#shDiscard'); if(dc) dc.onclick=()=>{close(); confirmBox('Släng dina ändringar?','Allt du ändrat sedan senaste publiceringen försvinner.','Släng',()=>Share.discard());};
     const cr=q('#shCreate'); if(cr) cr.onclick=async()=>{ if(!Share.st.name){const nm=await askName(); if(!nm) return; Share.st.name=nm; Share.save();}
       cr.disabled=true; cr.textContent='Krypterar och laddar upp…';
-      try{await Share.create(); close(); shareTreeModal(); toast('Klart! Kopiera länken och skicka den till släkten.',5000);}
+      try{await Share.create(); close(); if(opts.then) opts.then(); else { shareTreeModal(); toast('Klart! Kopiera länken och skicka den till släkten.',5000); }}
       catch(e){cr.disabled=false; cr.textContent='Skapa delningslänk'; toast('Kunde inte skapa delningen: '+(e.message||e),7000);} };
   });
 }
 
-export { Share, treeTitle, historyModal, askName, shareTreeModal, livingModal };
+export { Share, treeTitle, historyModal, askName, shareTreeModal, livingModal, sharePersonModal, canSharePerson, callName, showMeBar, hideMeBar };

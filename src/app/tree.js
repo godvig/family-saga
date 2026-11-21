@@ -1,18 +1,18 @@
 /* Släktsagan · tree.js — The family tree: layout, drawing, animation and the kinship highlight. */
-import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=60';
-import { pickImageFor } from './media.js?v=60';
-import { openPersonModal } from './modal.js?v=60';
-import { openCount } from './panel.js?v=60';
-import { printChart } from './print.js?v=60';
-import { relChainSheet, relation } from './relationship.js?v=60';
-import { emptyState, renderAll, select, setFocus } from './router.js?v=60';
-import { linkModal, treeOf, trees } from './start.js?v=60';
-import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=60';
-import { Store } from './store.js?v=60';
-import { themeName } from './theme.js?v=60';
-import { $, esc, toast } from './util.js?v=60';
-import { hideModal } from './views.js?v=60';
-import { Share } from './share.js?v=60';
+import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=61';
+import { pickImageFor } from './media.js?v=61';
+import { openPersonModal } from './modal.js?v=61';
+import { openCount } from './panel.js?v=61';
+import { printChart } from './print.js?v=61';
+import { relChainSheet, relation } from './relationship.js?v=61';
+import { emptyState, renderAll, select, setFocus } from './router.js?v=61';
+import { linkModal, treeOf, trees } from './start.js?v=61';
+import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=61';
+import { Store } from './store.js?v=61';
+import { themeName } from './theme.js?v=61';
+import { $, esc, toast } from './util.js?v=61';
+import { hideModal } from './views.js?v=61';
+import { Share } from './share.js?v=61';
 
 /* ============ TREE ============ */
 const KIN_LEVELS=['Inga','Syskon','Kusiner','Sysslingar','Tremänningar','Fyrmänningar','Femmänningar','Sexmänningar','Sjumänningar','Åttamänningar','Niomänningar'];
@@ -486,9 +486,12 @@ function renderTree(fresh){
     if(all) k=Math.max(k,.04);
     else if(HL) k=Math.max(k,W<700?.16:.3);
     else if(k<(ui.simple?.85:.6)){k=ui.simple?.85:.6; cx=Math.max(x0+W/(2*k),Math.min(x1-W/(2*k),CW)); cy=Math.max(y0+(H-60)/(2*k),Math.min(y1-(H-60)/(2*k),0));}
+    // opened from a link to a person: same zoom as always, with that person in the middle
+    if(ui.treeCenter){const n=ui.treePos.get(ui.treeCenter); if(n){cx=n.x; cy=n.y;}}
     const t=d3.zoomIdentity.translate(W/2-k*cx,(H+50)/2-k*cy).scale(k);
     svg.transition().duration(fresh?0:450).call(treeZoom.transform,t);
   }
+  ui.treeCenter=null;
   if(ui.treeZoomTo){const id=ui.treeZoomTo; ui.treeZoomTo=null; setTimeout(()=>treeGoTo(id),fresh?0:470);}
 }
 
