@@ -22,3 +22,22 @@ export function family() {
   const mm1 = kidsOf(mmS[1], 2, 1906, 'MMgren'); kidsOf(mm1[1], 2, 1933, 'MMsyssling');
   return { persons: P, me: me.id, ids: { FF, FM, MF, MM, Fa, Mo, ffS, fmS, mfS, mmS, faS, moS, meS, cousinsF, cousinsM, fm1 } };
 }
+
+/**
+ * Synthetic family for partner order (all fictional). Mannen has three partners: Tidig, younger than
+ * Sen but with the older children; Sen, with one child (a lone child); Barnlös, the oldest, without
+ * children. Sen also has a child with Annan. Syster is Mannen's sister, so he also shows in a side branch.
+ */
+export function partnerFamily() {
+  const P = [];
+  const mk = (id, sex, y, extra = {}) => { const p = { id, kind: 'person', given: id, surname: 'Fiktiv', sex, birthDate: String(y), fatherId: extra.f || '', motherId: extra.m || '', spouseIds: extra.sp || [] }; P.push(p); return p; };
+  mk('PFar', 'M', 1930, { sp: ['PMor'] }); mk('PMor', 'K', 1932, { sp: ['PFar'] });
+  mk('Mannen', 'M', 1960, { f: 'PFar', m: 'PMor', sp: ['Sen', 'Barnlös', 'Tidig'] }); // not added in the order they stand
+  mk('Syster', 'K', 1958, { f: 'PFar', m: 'PMor' });
+  mk('Tidig', 'K', 1968, { sp: ['Mannen'] }); mk('Sen', 'K', 1958, { sp: ['Annan', 'Mannen'] }); mk('Barnlös', 'K', 1950, { sp: ['Mannen'] });
+  mk('Annan', 'M', 1955, { sp: ['Sen'] });
+  mk('TidigBarn1', 'M', 1990, { f: 'Mannen', m: 'Tidig' }); mk('TidigBarn2', 'K', 1993, { f: 'Mannen', m: 'Tidig' });
+  mk('SenBarn', 'K', 2005, { f: 'Mannen', m: 'Sen' });
+  mk('AnnanBarn', 'M', 1985, { f: 'Annan', m: 'Sen' });
+  return P;
+}
