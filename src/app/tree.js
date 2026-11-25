@@ -1,18 +1,18 @@
 /* Släktsagan · tree.js — The family tree: layout, drawing, animation and the kinship highlight. */
-import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=61';
-import { pickImageFor } from './media.js?v=61';
-import { openPersonModal } from './modal.js?v=61';
-import { openCount } from './panel.js?v=61';
-import { printChart } from './print.js?v=61';
-import { relChainSheet, relation } from './relationship.js?v=61';
-import { emptyState, renderAll, select, setFocus } from './router.js?v=61';
-import { linkModal, treeOf, trees } from './start.js?v=61';
-import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=61';
-import { Store } from './store.js?v=61';
-import { themeName } from './theme.js?v=61';
-import { $, esc, toast } from './util.js?v=61';
-import { hideModal } from './views.js?v=61';
-import { Share } from './share.js?v=61';
+import { P, avatarMedia, avatarUrl, children, cropPct, fullName, homePerson, initials, lifespan, partners, placeName, sexColor, shortName } from './domain.js?v=62';
+import { pickImageFor } from './media.js?v=62';
+import { openPersonModal } from './modal.js?v=62';
+import { openCount } from './panel.js?v=62';
+import { printChart } from './print.js?v=62';
+import { relChainSheet, relation } from './relationship.js?v=62';
+import { emptyState, renderAll, select, setFocus } from './router.js?v=62';
+import { linkModal, treeOf, trees } from './start.js?v=62';
+import { DATA_REV, HIDDEN, S, activeView, ui } from './state.js?v=62';
+import { Store } from './store.js?v=62';
+import { themeName } from './theme.js?v=62';
+import { $, esc, toast } from './util.js?v=62';
+import { hideModal } from './views.js?v=62';
+import { Share } from './share.js?v=62';
 
 /* ============ TREE ============ */
 const KIN_LEVELS=['Inga','Syskon','Kusiner','Sysslingar','Tremänningar','Fyrmänningar','Femmänningar','Sexmänningar','Sjumänningar','Åttamänningar','Niomänningar'];
@@ -25,7 +25,17 @@ function setCardSize(small){SMALL=!!small; [CW,CH,PX,PY,PW,PH,MAXC]=small?[156,7
 function treeLayout(F,showSp){
   const ROW=CH+56, SEP=20, CG=14, nodes=[], links=[];
   const W=d=>CW+((d&&d.sps)?d.sps.length:0)*(CW+CG)+((d&&d.sibs)?d.sibs.length:0)*(CW+SEP);
-  const sepF=(a,b)=>(W(a.data)+W(b.data))/2+(a.parent===b.parent?SEP:SEP*2);
+  /* Partners stand in the order of the oldest child they have with the person: the partner with the
+     oldest shared child first. Partners without shared children follow, by their own birth year, and
+     ties keep the order the partners were added in. Children without a year count after those with one. */
+  const yearOr=(q,d)=>KinCore.yearOf(q.birthDate)||d;
+  const spOrder=(p,sps)=>sps.map((q,i)=>{const ys=children(p.id).filter(c=>c.fatherId===q.id||c.motherId===q.id).map(c=>yearOr(c,Infinity));
+      return {q,i,none:ys.length?0:1,y:ys.length?Math.min(...ys):yearOr(q,Infinity)};})
+    .sort((a,b)=>a.none-b.none||(a.y-b.y||0)||a.i-b.i).map(o=>o.q);
+  /* Where the person stands among their sorted partners (index into the row). With one partner the
+     couple reads man – woman as before; with more, the person goes in the middle so the sides come out
+     even (a man leans left, a woman right, when the count is odd). */
+  const meAt=(p,sps,focus)=>sps.length===1?((focus?p.sex==='K':p.sex==='K'&&sps[0].sex!=='K')?1:0):(p.sex==='K'?Math.ceil:Math.floor)(sps.length/2);
   // ancestors
   const anc=(p,depth,rel)=>{const n={p,rel,children:[]}; if(depth<ui.ancGen){for(const rel of ['father','mother']){const q=P(p[rel+'Id']); if(q) n.children.push(anc(q,depth+1,rel)); else if(Store.canEdit&&!p[rel+'Id']&&depth<2) n.children.push({ghost:rel,of:p.id,rel,children:[]});}} return n;};
   const aRoot=d3.hierarchy(anc(F,0,null));
@@ -41,25 +51,31 @@ function treeLayout(F,showSp){
   const lim=Math.min(ui.kinDeg,ui.ancGen);
   const born=q=>KinCore.yearOf(q.birthDate)||9999;
   const descCount=q=>{const seen=new Set(), st=[q.id]; while(st.length) for(const c of children(st.pop())) if(!seen.has(c.id)){seen.add(c.id); st.push(c.id);} return seen.size;};
-  // an ancestor's other partners (e.g. a father's later wife) sit on the outer side of the couple
+  /* An ancestor's other partners (e.g. a father's later wife) sit on the outer side of the couple, in
+     partner order outwards from it: the nearest has the oldest shared child, those without children
+     stand furthest out. So each one's dot for their children stays between them and the ancestor. */
   const ancIds=new Set(); aRoot.each(n=>{if(n.data.p) ancIds.add(n.data.p.id);});
   const taken=new Set([...ancIds,...(showSp?partners(F).map(q=>q.id):[])]);
   aRoot.each(n=>{n.data.sps=[]; if(!showSp||n.depth===0||!n.data.p) return;
-    n.data.sps=partners(n.data.p).filter(q=>!taken.has(q.id)); n.data.sps.forEach(q=>taken.add(q.id));});
+    n.data.sps=spOrder(n.data.p,partners(n.data.p).filter(q=>!taken.has(q.id))); n.data.sps.forEach(q=>taken.add(q.id));});
   // brothers and sisters of the ancestors on the inner lines: part of the ancestor's own place in the row
   aRoot.each(n=>{n.data.sibs=[]; if(n.depth<1||n.depth>=lim||!n.data.p||n.outer) return;
     const kids=[]; for(const c of n.children||[]) if(c.data.p) for(const k of children(c.data.p.id)) if(!taken.has(k.id)&&!kids.includes(k)) kids.push(k);
     kids.forEach(k=>taken.add(k.id));
     // oldest to the left, youngest to the right, on whichever side they stand
     n.data.sibs=kids.map((k,i)=>[k,i]).sort((a,b)=>(born(a[0])-born(b[0])||a[1]-b[1])*n.side).map(a=>a[0]);});
-  d3.tree().nodeSize([1,ROW]).separation((a,b)=>(W(a.data)+W(b.data))/2+(a.parent===b.parent?18:40))(aRoot);
+  /* A node's x is its own card; its partners and brothers and sisters reach out to one side only. d3
+     centres every node under its two parents, so each ancestor stands right below their parents' dot.
+     d3 asks for the separation in either order, so the row order (pre-order) tells left from right. */
+  const ord=new Map(); {let i=0; aRoot.eachBefore(n=>ord.set(n,i++));}
+  const reach=(n,dir)=>CW/2+(n.data.rel&&(n.data.rel==='mother'?1:-1)===dir?W(n.data)-CW:0);
+  d3.tree().nodeSize([1,ROW]).separation((a,b)=>{const [l,r]=ord.get(a)<ord.get(b)?[a,b]:[b,a]; return reach(l,1)+reach(r,-1)+(a.parent===b.parent?18:40);})(aRoot);
   const extraPos={};
   aRoot.each(n=>{n.y=-n.depth*ROW; if(n.depth===0) return; nodes.push(n);
     const sps=n.data.sps||[], sibs=n.data.sibs||[]; if(!sps.length&&!sibs.length) return;
-    const side=n.side, w=W(n.data);
-    n.x=n.x-side*(w-CW)/2;
-    sps.forEach((q,i)=>{const x=n.x+side*(i+1)*(CW+CG); const pn={data:{p:q,partner:true},x,y:n.y}; nodes.push(pn); extraPos[q.id]=pn;
-      const inner=n.x+side*i*(CW+CG); links.push({type:'cp',x1:inner+side*CW/2,x2:x-side*CW/2,y:n.y,dash:i>0});});
+    const side=n.side;
+    n.spN=sps.map((q,i)=>{const x=n.x+side*(i+1)*(CW+CG); const pn={data:{p:q,partner:true},x,y:n.y,of:n,i}; nodes.push(pn); extraPos[q.id]=pn;
+      const inner=n.x+side*i*(CW+CG); pn.cp={type:'cp',x1:inner+side*CW/2,x2:x-side*CW/2,y:n.y,dash:i>0}; links.push(pn.cp); return pn;});
     const x0=n.x+side*sps.length*(CW+CG);
     n.sibN=sibs.map((q,i)=>{const sn={data:{p:q,sib:true,more:descCount(q)},x:x0+side*(i+1)*(CW+SEP),y:n.y}; nodes.push(sn); return sn;});});
   // parents are drawn as a couple: a line between them, a dot in the middle, one line down to the child
@@ -73,77 +89,65 @@ function treeLayout(F,showSp){
       for(const sn of n.sibN){ const k=sn.data.p, full=ps.length===2&&k.fatherId===n.data.p.fatherId&&k.motherId===n.data.p.motherId;
         const fa=pos[k.fatherId]||extraPos[k.fatherId], mo=pos[k.motherId]||extraPos[k.motherId];
         links.push({type:'desc',s:full||(fa&&mo)?{x:full?(ps[0].x+ps[1].x)/2:(fa.x+mo.x)/2,y:ps[0].y,mid:true}:{x:(fa||mo).x,y:(fa||mo).y},t:sn}); }} });
-  // focus partners: man to the left, woman to the right
-  // Partners alternate sides (first one to the right for a man, left for a woman), so each
-  // couple gets its own gap and its own junction for their children.
+  // the focus person's partners, in partner order, with the focus person among them
   const PG=CW+34;
-  const parts=showSp?partners(F).sort((a,b)=>children(b.id).filter(c=>c.fatherId===F.id||c.motherId===F.id).length-children(a.id).filter(c=>c.fatherId===F.id||c.motherId===F.id).length):[];
-  const pPos={}, junc={}; const sideCount={'-1':0,'1':0}; const first=F.sex==='K'?-1:1;
-  parts.forEach((sp,i)=>{const side=i%2===0?first:-first; const k=++sideCount[side]; const x=side*k*PG;
-    const n={data:{p:sp,partner:true},x,y:0}; nodes.push(n); pPos[sp.id]=n;
-    const inner=x-side*PG; links.push({type:'cp',x1:inner+side*CW/2,x2:x-side*CW/2,y:0,dash:k>1});
-    junc[sp.id]=x-side*PG/2;});
+  const parts=showSp?spOrder(F,partners(F)):[];
   const shown=new Set([F.id]); aRoot.each(n=>{if(n.data.p) shown.add(n.data.p.id); (n.data.sibs||[]).forEach(q=>shown.add(q.id));}); parts.forEach(q=>shown.add(q.id)); Object.keys(extraPos).forEach(id=>shown.add(id));
-  // a person with partners and (step)children, down to depth maxD
-  const mk=(p,dd,maxD)=>{shown.add(p.id);
-    const sps=showSp?partners(p).filter(q=>!shown.has(q.id)):[]; sps.forEach(q=>shown.add(q.id));
-    let kids=[]; if(dd<maxD){kids=children(p.id); if(showSp) for(const q of sps) for(const c of children(q.id)) if(!kids.includes(c)) kids.push(c);}
-    kids=kids.filter(c=>!shown.has(c.id)); kids.forEach(c=>shown.add(c.id));
-    // children under the partner they belong to: left partners' children first, then right partners'
-    if(sps.length){ const side=sideOf(p,sps), pos=c=>{const i=sps.findIndex(q=>q.id===c.fatherId||q.id===c.motherId); return i<0?0:side[i]*(Math.floor(i/2)+1);};
-      kids=kids.map((c,i)=>[c,i]).sort((x,y)=>pos(x[0])-pos(y[0])||x[1]-y[1]).map(x=>x[0]); }
-    return {p,sps,children:kids.map(c=>mk(c,dd+1,maxD))};};
-  // place a laid-out node: couple centred on c, person card first, partners to the right
-  // Several partners alternate sides – first to the right, second to the left, third to the right…
-  // so each partner gets their own line from the person and partners never sit two in a row.
-  const sideOf=(p,sps)=>{const flip=p.sex==='K'&&sps[0]&&sps[0].sex!=='K'?-1:1; return sps.map((q,i)=>i%2===0?flip:-flip);};
-  const expand=(n,c,y)=>{const w=W(n.data), sps=n.data.sps, side=sideOf(n.data.p,sps), step=CW+CG, L=side.filter(x=>x<0).length; n.y=y; n.x=c-(w-CW)/2+L*step;
-    const cnt={'-1':0,'1':0}; n.spx=sps.map((q,i)=>n.x+side[i]*(++cnt[side[i]])*step);
-    n.inner=sps.map((q,i)=>{const prev=sps.findLastIndex((x,j)=>j<i&&side[j]===side[i]); return prev<0?n.x:n.spx[prev];}); nodes.push(n);
-    sps.forEach((q,i)=>{const x=n.spx[i], r=side[i]>0; nodes.push({data:{p:q,partner:true},x,y});
-      links.push({type:'cp',x1:r?n.inner[i]+CW/2:x+CW/2,x2:r?x-CW/2:n.inner[i]-CW/2,y,dash:n.inner[i]!==n.x});});};
-  // where the line down to child n starts
-  const srcOf=n=>{const pn=n.parent, c=n.data.p, pp=pn.data.p;
-    const own=c.fatherId===pp.id||c.motherId===pp.id, other=c.fatherId===pp.id?c.motherId:c.fatherId;
-    const i=pn.data.sps.findIndex(q=>q.id===(own?other:(c.fatherId&&pn.data.sps.some(q=>q.id===c.fatherId)?c.fatherId:c.motherId)));
-    if(own&&i>=0) return {x:(pn.spx[i]+pn.inner[i])/2,y:pn.y,mid:true};
-    if(!own&&i>=0) return {x:pn.spx[i],y:pn.y};
-    return {x:pn.x,y:pn.y};};
-  // descendants of the focus person: one block per couple, centred under that couple's junction
-  {const groups=new Map();
-   if(ui.descGen>0){
-     const add=(key,c)=>{if(shown.has(c.id)) return; shown.add(c.id); if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(c);};
-     for(const c of children(F.id)){const other=c.fatherId===F.id?c.motherId:c.fatherId; add(other&&pPos[other]?other:'',c);}
-     if(showSp) for(const q of parts) for(const c of children(q.id)) add('step:'+q.id,c);}
-   const blocks=[...groups.entries()].map(([key,kids])=>{
-     const q=key.startsWith('step:')?key.slice(5):key;
-     const jx=key.startsWith('step:')?pPos[q].x:(q?junc[q]:0);
-     const h=d3.hierarchy({root:true,sps:[],children:kids.map(c=>mk(c,1,ui.descGen))});
-     d3.tree().nodeSize([1,ROW]).separation(sepF)(h);
-     const bn=h.descendants().filter(n=>n.depth>0), kx=bn.filter(n=>n.depth===1).map(n=>n.x);
-     return {key,jx,mid:!!q&&!key.startsWith('step:'),bn,ideal:jx-(Math.min(...kx)+Math.max(...kx))/2};
-   }).sort((a,b)=>a.jx-b.jx);
-   const right={};
-   for(const bl of blocks){
-     const ext={}; for(const n of bl.bn){const w=W(n.data); const e=ext[n.depth]||(ext[n.depth]=[n.x-w/2,n.x+w/2]); e[0]=Math.min(e[0],n.x-w/2); e[1]=Math.max(e[1],n.x+w/2);}
-     let sh=bl.ideal; for(const [d,e] of Object.entries(ext)) if(right[d]!==undefined) sh=Math.max(sh,right[d]+SEP*2-e[0]);
-     for(const [d,e] of Object.entries(ext)) right[d]=e[1]+sh;
-     bl.sh=sh;}
-   // centre the whole set of blocks under the focus row if they were pushed aside
-   if(blocks.length>1){const lo=Math.min(...blocks.map(b=>b.sh+Math.min(...b.bn.filter(n=>n.depth===1).map(n=>n.x)))), hi=Math.max(...blocks.map(b=>b.sh+Math.max(...b.bn.filter(n=>n.depth===1).map(n=>n.x))));
-     const jlo=Math.min(...blocks.map(b=>b.jx)), jhi=Math.max(...blocks.map(b=>b.jx)); const adj=((jlo+jhi)/2)-((lo+hi)/2);
-     const can=blocks.every(b=>Math.abs(b.sh+adj-b.ideal)<=Math.abs(b.sh-b.ideal)+Math.abs(adj)); if(can) blocks.forEach(b=>b.sh+=adj);}
-   for(const bl of blocks){
-     for(const n of bl.bn){ expand(n,n.x+bl.sh,n.depth*ROW);
-       if(n.depth===1) links.push({type:'desc',s:{x:bl.jx,y:0,mid:bl.mid},t:n,fam:'f:'+bl.key});
-       else links.push({type:'desc',s:srcOf(n),t:n}); }}}
+  /* A person with partners and their own children, down to depth maxD. A partner's children with
+     someone else are not the person's descendants and are not drawn here. */
+  const mkF=(p,dd,maxD,given)=>{shown.add(p.id);
+    const sps=given||(showSp?partners(p).filter(q=>!shown.has(q.id)):[]); sps.forEach(q=>shown.add(q.id));
+    const kids=dd<maxD?children(p.id).filter(c=>!shown.has(c.id)):[]; kids.forEach(c=>shown.add(c.id));
+    return {p,sps:spOrder(p,sps),kids:kids.map(c=>mkF(c,dd+1,maxD))};};
+  /* Laying out a family. A result holds cards and lines relative to the person's card (x 0, row 0) and
+     how far it reaches on each row (ext). Moving a result moves all of it. */
+  const grow=(ext,r,l,rr)=>{const e=ext[r]; if(!e) ext[r]=[l,rr]; else {if(l<e[0]) e[0]=l; if(rr>e[1]) e[1]=rr;}};
+  const move=(res,dx,dr)=>{for(const n of res.nodes){n.x+=dx; n.r+=dr;}
+    for(const l of res.links){ if(l.type==='cp'){l.x1+=dx; l.x2+=dx; l.r+=dr;} else {l.s.x+=dx; l.s.r+=dr;} }
+    const e={}; for(const [r,v] of Object.entries(res.ext)) e[+r+dr]=[v[0]+dx,v[1]+dx]; res.ext=e; return res;};
+  // brothers and sisters side by side (shoulder to shoulder, their own descendants further apart), centred on x 0, one row down
+  const block=subs=>{const out={nodes:[],links:[],ext:{},tops:[]}; const offs=[];
+    for(const s of subs){let o=0; if(offs.length){o=-Infinity; for(const [r,e] of Object.entries(s.ext)){const a=out.ext[r]; if(a) o=Math.max(o,a[1]+(+r===0?SEP:SEP*2)-e[0]);}}
+      offs.push(o); for(const [r,e] of Object.entries(s.ext)) grow(out.ext,r,e[0]+o,e[1]+o); s.o=o;}
+    const c=(offs[0]+offs[offs.length-1])/2; out.ext={};
+    for(const s of subs){move(s,s.o-c,1); out.nodes.push(...s.nodes); out.links.push(...s.links); out.tops.push(s.nodes[0]); for(const [r,e] of Object.entries(s.ext)) grow(out.ext,r,e[0],e[1]);}
+    return out;};
+  /* A person, their partners in a row and each couple's children centred under the couple's dot – a
+     lone child straight below it. Where two couples' children would collide, the partner further out
+     moves away (the couple's line grows), so no line has to bend round a neighbour. */
+  const layF=(t,step,focus)=>{
+    const seq=[...t.sps]; const k=meAt(t.p,t.sps,focus); seq.splice(k,0,null);
+    const xs=seq.map((q,j)=>(j-k)*step), inner=j=>j<k?j+1:j-1, anchor=j=>j===k?xs[k]:(xs[j]+xs[inner(j)])/2;
+    const res={p:t.p,nodes:[{data:{p:t.p},x:0,r:0}],links:[],ext:{}};
+    const fam=new Map(); for(const c of t.kids){const o=c.p.fatherId===t.p.id?c.p.motherId:c.p.fatherId; let j=seq.findIndex(q=>q&&q.id===o); if(j<0) j=k; if(!fam.has(j)) fam.set(j,[]); fam.get(j).push(c);}
+    const js=[...fam.keys()], order=[...js.filter(j=>j===k),...js.filter(j=>j<k).sort((a,b)=>b-a),...js.filter(j=>j>k).sort((a,b)=>a-b)];
+    for(const j of order){
+      const b=block(fam.get(j).map(c=>layF(c,CW+CG)));
+      if(j!==k){ const a=anchor(j); let need=a;
+        for(const [r,e] of Object.entries(b.ext)){const o=res.ext[r]; if(o) need=j<k?Math.min(need,o[0]-SEP*2-e[1]):Math.max(need,o[1]+SEP*2-e[0]);}
+        if(need!==a) for(let i=0;i<seq.length;i++) if(j<k?i<=j:i>=j) xs[i]+=2*(need-a); }
+      const a=anchor(j); move(b,a,0);
+      res.nodes.push(...b.nodes); res.links.push(...b.links); for(const [r,e] of Object.entries(b.ext)) grow(res.ext,r,e[0],e[1]);
+      for(const n of b.tops) res.links.push({type:'desc',s:{x:a,r:0,mid:j!==k},t:n});}
+    seq.forEach((q,j)=>{ if(!q) return; const i=inner(j);
+      res.nodes.push({data:{p:q,partner:true},x:xs[j],r:0});
+      res.links.push({type:'cp',x1:Math.min(xs[j],xs[i])+CW/2,x2:Math.max(xs[j],xs[i])-CW/2,r:0,dash:i!==k});});
+    grow(res.ext,0,xs[0]-CW/2,xs[xs.length-1]+CW/2);
+    return res;};
+  // put a laid-out family in the tree with its row 0 at y0
+  const put=(res,x0,y0,skip)=>{move(res,x0,0);
+    for(const n of res.nodes){ if(n===skip) continue; n.y=y0+n.r*ROW; nodes.push(n);}
+    for(const l of res.links){ if(l.type==='cp') l.y=y0+l.r*ROW; else l.s={x:l.s.x,y:y0+l.s.r*ROW,mid:l.s.mid}; links.push(l);}};
+  // the focus person's row and descendants
+  const fRes=layF(mkF(F,0,ui.descGen,parts),PG,true); put(fRes,0,0,fRes.nodes[0]);
   // side branches. Siblings may bring their descendants; further out, branches stop at the focus's generation.
   {const occ={}, GAPX=SEP*2;
    const occAdd=(r,l,rr)=>{const o=occ[r]||(occ[r]=[l,rr]); if(l<o[0]) o[0]=l; if(rr>o[1]) o[1]=rr;};
    for(const n of nodes) occAdd(Math.round(n.y/ROW),n.x-CW/2,n.x+CW/2); occAdd(0,-CW/2,CW/2);
-   const sideDefault=parts.some(q=>!(q.sex==='M'&&F.sex!=='M'))?-1:1;
+   // a lone block of brothers and sisters goes to the side where the focus person has fewer partners
+   const pSide=d=>fRes.nodes.filter(n=>n.data.partner&&n.r===0&&Math.sign(n.x)===d).length, sideDefault=pSide(1)>=pSide(-1)&&pSide(1)>0?-1:1;
    // only the focus person and the ancestors on the two outermost lines have room for whole branches
-   const groups=[]; aRoot.each(n=>{ if(n.depth>=1&&n.depth<=lim&&n.data.p&&(n.parent.depth===0||n.parent.outer)){ let g0=groups.find(g=>g.child===n.parent); if(!g0){g0={child:n.parent,d:n.depth,par:[]}; groups.push(g0);} g0.par.push(n);} });
+   const tops=[], groups=[]; aRoot.each(n=>{ if(n.depth>=1&&n.depth<=lim&&n.data.p&&(n.parent.depth===0||n.parent.outer)){ let g0=groups.find(g=>g.child===n.parent); if(!g0){g0={child:n.parent,d:n.depth,par:[]}; groups.push(g0);} g0.par.push(n);} });
    groups.sort((a,b)=>a.d-b.d);
    for(const g0 of groups){
      const pos={}; for(const n of g0.par) pos[n.data.p.id]=n;
@@ -158,56 +162,63 @@ function treeLayout(F,showSp){
      // The focus's own brothers and sisters are split over both sides, so the tree stays centred:
      // oldest to the left, youngest to the right, cut where the two sides come out most even.
      const place=[], solo=[];
-     const measure=sub=>{const h=d3.hierarchy({root:true,sps:[],children:[sub]}); d3.tree().nodeSize([1,ROW]).separation(sepF)(h); const e={};
-       for(const n of h.descendants()) if(n.depth>0){const w=W(n.data); const r=e[n.depth]||(e[n.depth]=[n.x-w/2,n.x+w/2]); r[0]=Math.min(r[0],n.x-w/2); r[1]=Math.max(r[1],n.x+w/2);}
-       return {rows:Object.keys(e).length,width:Math.max(...Object.values(e).map(r=>r[1]-r[0]))};};
+     const width=res=>Math.max(...Object.values(res.ext).map(r=>r[1]-r[0]));
      for(const bk of blocks){
-       const mx=jOf(bk[0]), subs=bk.map(k=>mk(k,1,maxD));
+       const mx=jOf(bk[0]), subs=bk.map(k=>layF(mkF(k,1,maxD),CW+CG));
        if(g0.d===1&&Math.abs(mx)<=CW/2&&subs.length>1){
-         const width=sub=>{const h=d3.hierarchy({root:true,sps:[],children:[sub]}); d3.tree().nodeSize([1,ROW]).separation(sepF)(h); const e={};
-           for(const n of h.descendants()) if(n.depth>0){const w=W(n.data); const r=e[n.depth]||(e[n.depth]=[n.x-w/2,n.x+w/2]); r[0]=Math.min(r[0],n.x-w/2); r[1]=Math.max(r[1],n.x+w/2);}
-           return Math.max(...Object.values(e).map(r=>r[1]-r[0]))+GAPX;};
-         const ws=subs.map(width), o0=occ[0]||[-CW/2,CW/2], fy=KinCore.yearOf(F.birthDate);
+         const ws=subs.map(s=>width(s)+GAPX), o0=occ[0]||[-CW/2,CW/2], fy=KinCore.yearOf(F.birthDate);
          const chrono=fy?subs.filter(t=>(KinCore.yearOf(t.p.birthDate)||9999)<fy).length:Math.ceil(subs.length/2);
          let best=0, bestScore=Infinity;
          for(let k=0;k<=subs.length;k++){ const l=-o0[0]+ws.slice(0,k).reduce((a,b)=>a+b,0), r=o0[1]+ws.slice(k).reduce((a,b)=>a+b,0);
            const score=Math.abs(l-r)+Math.abs(k-chrono)*CW*0.25; if(score<bestScore){bestScore=score; best=k;} }
          if(best>0) place.push({subs:subs.slice(0,best),mx,dir:-1}); if(best<subs.length) place.push({subs:subs.slice(best),mx,dir:1});
        } else if(g0.d===1) place.push({subs,mx,dir:mx<-CW/2?-1:mx>CW/2?1:(mxAll<-1?-1:mxAll>1?1:sideDefault)});
-       else subs.forEach(sub=>solo.push({subs:[sub],mx,dir:g0.child.side,one:true,m:measure(sub),i:solo.length}));
+       else subs.forEach(sub=>solo.push({subs:[sub],mx,dir:g0.child.side,one:true,half:+(sub.p.fatherId!==g0.child.data.p.fatherId||sub.p.motherId!==g0.child.data.p.motherId),m:{rows:Object.keys(sub.ext).length,width:width(sub)},i:solo.length}));
      }
      /* An ancestor's brothers and sisters are placed one by one, outwards from the ancestor: first those
         who stand alone, then the branches – shallow and narrow ones nearest, deep and wide ones furthest
-        out, where they have room to spread without pushing the others away. Equal ones keep birth order. */
-     solo.sort((a,b)=>a.m.rows-b.m.rows||a.m.width-b.m.width||(born(b.subs[0].p)-born(a.subs[0].p))*a.dir||a.i-b.i);
+        out, where they have room to spread without pushing the others away. Equal ones keep birth order.
+        Half-brothers and -sisters come after all of them, so their lines never have to cross the others'. */
+     solo.sort((a,b)=>a.half-b.half||a.m.rows-b.m.rows||a.m.width-b.m.width||(born(b.subs[0].p)-born(a.subs[0].p))*a.dir||a.i-b.i);
      place.push(...solo);
+     const pr=Math.round(py/ROW);
      for(const {subs,mx,dir,one} of place){
-     const block=d3.hierarchy({root:true,sps:[],children:subs});
-     d3.tree().nodeSize([1,ROW]).separation(sepF)(block);
-     const bn=block.descendants().filter(n=>n.depth>0);
-     const ext={}; for(const n of bn){const r=Math.round(py/ROW)+n.depth, w=W(n.data); const e=ext[r]||(ext[r]=[n.x-w/2,n.x+w/2]); if(n.x-w/2<e[0]) e[0]=n.x-w/2; if(n.x+w/2>e[1]) e[1]=n.x+w/2;}
-     const kx=bn.filter(n=>n.depth===1).map(n=>n.x); let sh=mx-(Math.min(...kx)+Math.max(...kx))/2;
-     const r0=Math.round(py/ROW)+1; // the siblings' own row: there they stand shoulder to shoulder with the ancestor
-     for(const [r,e] of Object.entries(ext)){const o=occ[r]; if(!o) continue; const gap=one&&+r===r0?SEP:GAPX;
-       if(dir<0) sh=Math.min(sh,o[0]-gap-e[1]); else sh=Math.max(sh,o[1]+gap-e[0]);}
-     for(const n of bn){ expand(n,n.x+sh,py+n.depth*ROW); const w=W(n.data); occAdd(Math.round(n.y/ROW),n.x-CW/2,n.x-CW/2+w);
-       if(n.depth===1){const fa=pos[n.data.p.fatherId]||extraPos[n.data.p.fatherId], mo=pos[n.data.p.motherId]||extraPos[n.data.p.motherId];
-         const q=fa&&mo?{x:(fa.x+mo.x)/2,y:py,mid:true}:{x:(fa||mo).x,y:py}; links.push({type:'desc',s:q,t:n});}
-       else links.push({type:'desc',s:srcOf(n),t:n}); }
+       const b=block(subs); let sh=mx;
+       for(const [r,e] of Object.entries(b.ext)){const o=occ[pr+(+r)]; if(!o) continue; const gap=one&&+r===1?SEP:GAPX; // the siblings' own row: shoulder to shoulder with the ancestor
+         if(dir<0) sh=Math.min(sh,o[0]-gap-e[1]); else sh=Math.max(sh,o[1]+gap-e[0]);}
+       put(b,sh,py); for(const n of b.nodes) occAdd(Math.round(n.y/ROW),n.x-CW/2,n.x+CW/2);
+       const par=n=>[pos[n.data.p.fatherId]||extraPos[n.data.p.fatherId], pos[n.data.p.motherId]||extraPos[n.data.p.motherId]];
+       /* A lone half-brother or -sister pushed out past the others: their parent's other partner moves out
+          above them instead (on the open outer end of the row), so the line still goes straight down. */
+       if(b.tops.length===1){const c=b.tops[0], [fa,mo]=par(c), q=fa&&mo&&(fa.of?fa:mo.of?mo:null), a=q&&q.of;
+         if(q&&(a===fa||a===mo)&&!(a.sibN&&a.sibN.length)){ const out=Math.sign(q.x-a.x), d=2*c.x-a.x-q.x, row=Math.round(q.y/ROW);
+           if(d*out>0.5&&!nodes.some(m=>Math.round(m.y/ROW)===row&&m.of!==a&&(m.x-q.x)*out>0)){
+             for(const m of a.spN.slice(q.i)){m.x+=d; const inner=m.i?a.spN[m.i-1].x:a.x; m.cp.x1=inner+out*CW/2; m.cp.x2=m.x-out*CW/2; occAdd(row,m.x-CW/2,m.x+CW/2);} }}}
+       for(const n of b.tops){const [fa,mo]=par(n); tops.push({n,fa,mo});}
      }
-   }}
+   }
+   // the lines up to the parents, once every partner has its place
+   for(const {n,fa,mo} of tops){const py=(fa||mo).y;
+     links.push({type:'desc',s:fa&&mo?{x:(fa.x+mo.x)/2,y:py,mid:true}:{x:(fa||mo).x,y:py},t:n});}
+  }
   nodes.push({data:{p:F},x:0,y:0,focus:true});
   // give each family its own lane in the gap between two rows, so lines never merge
   {const G=new Map();
    for(const l of links){ if(l.type==='cp') continue;
      if(l.type==='dot') continue;
     const top=l.type==='anc'?l.t.y:l.s.y, key=l.type==='anc'?l.s:(l.s.x+'|'+l.s.y);
-     let g=G.get(key); if(!g){g={top,lo:Infinity,hi:-Infinity,ls:[]}; G.set(key,g);}
+     let g=G.get(key); if(!g){g={top,lo:Infinity,hi:-Infinity,ls:[],trunk:l.s.x}; G.set(key,g);}
      g.lo=Math.min(g.lo,l.s.x,l.t.x); g.hi=Math.max(g.hi,l.s.x,l.t.x); g.ls.push(l);}
    const byGap={}; for(const g of G.values()) (byGap[g.top]=byGap[g.top]||[]).push(g);
-   for(const gs of Object.values(byGap)){ gs.sort((a,b)=>a.lo-b.lo); const lanes=[];
-     for(const g of gs){let i=lanes.findIndex(r=>r<g.lo-14); if(i<0){i=lanes.length; lanes.push(0);} lanes[i]=g.hi; g.lane=i;}
-     const nL=lanes.length, step=nL>1?Math.min(13,(ROW-CH-12)/(nL-1)):0;
+   /* Two families whose lines overlap get different lanes. Where only one of them can run above the
+      other without crossing (none of its children under the other's line, the other's trunk not under
+      its own), that one gets the higher lane. */
+   const near=(a,b)=>a.lo<b.hi+14&&b.lo<a.hi+14, under=(x,g)=>x>g.lo+0.5&&x<g.hi-0.5;
+   const clear=(a,b)=>!a.ls.some(l=>under(l.t.x,b))&&!under(b.trunk,a), above=(a,b)=>near(a,b)&&clear(a,b)&&!clear(b,a);
+   for(const gs of Object.values(byGap)){ gs.sort((a,b)=>a.lo-b.lo); const left=[...gs], done=[];
+     while(left.length){ let i=left.findIndex(g=>!left.some(h=>h!==g&&above(h,g))); if(i<0) i=0; const g=left.splice(i,1)[0];
+       let L=Math.max(0,...done.filter(h=>above(h,g)).map(h=>h.lane+1)); while(done.some(h=>h.lane===L&&near(h,g))) L++; g.lane=L; done.push(g);}
+     const nL=Math.max(0,...gs.map(g=>g.lane+1)), step=nL>1?Math.min(13,(ROW-CH-12)/(nL-1)):0;
      // colour a family's lines only where they run alongside another family's
      let ci=0; for(const g of gs){const crowd=gs.some(o=>o!==g&&o.lo<g.hi+30&&o.hi>g.lo-30); const f=crowd?(ci++%5)+1:0; for(const l of g.ls) l.fam=f;}
      for(const g of gs){const my=g.top+ROW/2+(g.lane-(nL-1)/2)*step; for(const l of g.ls) l.my=my;}}}
@@ -331,6 +342,7 @@ function renderTree(fresh){
     if(l.type==='cp') return `M${l.x1},${l.y}H${l.x2}`;
     if(l.type==='dot') return `M${l.x-4},${l.y}a4,4 0 1,0 8,0a4,4 0 1,0 -8,0`;
     if(l.type==='anc') return `M${l.s.x},${l.s.y-CH/2}V${l.my}H${l.t.x}V${l.t.y+CH/2}`;
+    if(Math.abs(l.s.x-l.t.x)<0.5) return `M${l.t.x},${l.s.mid?l.s.y:l.s.y+CH/2}V${l.t.y-CH/2}`; // one child: straight down
     return `M${l.s.x},${l.s.mid?l.s.y:l.s.y+CH/2}V${l.my}H${l.t.x}V${l.t.y-CH/2}`;
   };
   // Animation (FLIP): remember where every card is drawn right now, mid-glide included,

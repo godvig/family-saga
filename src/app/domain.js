@@ -1,10 +1,10 @@
 /* Släktsagan · domain.js — Family logic on top of the store: names, places, relatives, ancestors, blobs and thumbnails. */
-import { loadImg } from './media.js?v=61';
-import { renderAll, select, setFocus } from './router.js?v=61';
-import { Share } from './share.js?v=61';
-import { ALL, S, applyView, bumpRev, ui } from './state.js?v=61';
-import { Store } from './store.js?v=61';
-import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=61';
+import { loadImg } from './media.js?v=62';
+import { renderAll, select, setFocus } from './router.js?v=62';
+import { Share } from './share.js?v=62';
+import { ALL, S, applyView, bumpRev, ui } from './state.js?v=62';
+import { Store } from './store.js?v=62';
+import { NOW_Y, clone, dateKey, esc, norm, toast, uid, yearOf } from './util.js?v=62';
 
 /* ============ Domain helpers ============ */
 const P=id=>S.persons[id];
