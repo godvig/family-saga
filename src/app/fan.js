@@ -1,12 +1,12 @@
 /* Släktsagan · fan.js — The fan chart. */
-import { P, ancestorsOf, avatarUrl, fullName, lifespan, personLabel, placeName, shortName } from './domain.js?v=62';
-import { openPersonModal } from './modal.js?v=62';
-import { printChart } from './print.js?v=62';
-import { emptyState, select, setFocus } from './router.js?v=62';
-import { S, ui } from './state.js?v=62';
-import { Store } from './store.js?v=62';
-import { cssv } from './theme.js?v=62';
-import { $, esc } from './util.js?v=62';
+import { P, ancestorsOf, avatarUrl, fullName, lifespan, personLabel, placeName, shortName } from './domain.js?v=63';
+import { openPersonModal } from './modal.js?v=63';
+import { printChart } from './print.js?v=63';
+import { emptyState, select, setFocus } from './router.js?v=63';
+import { S, ui } from './state.js?v=63';
+import { Store } from './store.js?v=63';
+import { cssv } from './theme.js?v=63';
+import { $, esc } from './util.js?v=63';
 
 /* ============ FAN CHART ============ */
 let fanZoom=null;

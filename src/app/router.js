@@ -1,22 +1,22 @@
 /* Släktsagan · router.js — Hash routing, renderAll and the empty state. */
-import { renderCard } from './card.js?v=62';
-import { loadDemo, updateDemoBar } from './demo.js?v=62';
-import { P, homePerson } from './domain.js?v=62';
-import { renderDups } from './dups.js?v=62';
-import { renderFan } from './fan.js?v=62';
-import { renderImport } from './importexport.js?v=62';
-import { mapState, renderMap } from './map.js?v=62';
-import { renderPanel } from './panel.js?v=62';
-import { renderPersons } from './persons.js?v=62';
-import { renderSources } from './places.js?v=62';
-import { renderRel } from './relationship.js?v=62';
-import { renderAbout, renderStart } from './start.js?v=62';
-import { ALL, APP_VERSION, S, activeView, applyView, ui } from './state.js?v=62';
-import { Store, updateUndoBtns } from './store.js?v=62';
-import { renderTimeline } from './timeline.js?v=62';
-import { reachInLockedTree, renderTree } from './tree.js?v=62';
-import { $, esc, toast } from './util.js?v=62';
-import { updateViewBtn } from './views.js?v=62';
+import { renderCard } from './card.js?v=63';
+import { loadDemo, updateDemoBar } from './demo.js?v=63';
+import { P, homePerson } from './domain.js?v=63';
+import { renderDups } from './dups.js?v=63';
+import { renderFan } from './fan.js?v=63';
+import { renderImport } from './importexport.js?v=63';
+import { mapState, renderMap } from './map.js?v=63';
+import { renderPanel } from './panel.js?v=63';
+import { renderPersons } from './persons.js?v=63';
+import { renderSources } from './places.js?v=63';
+import { renderRel } from './relationship.js?v=63';
+import { renderAbout, renderStart } from './start.js?v=63';
+import { ALL, APP_VERSION, S, activeView, applyView, ui } from './state.js?v=63';
+import { Store, updateUndoBtns } from './store.js?v=63';
+import { renderTimeline } from './timeline.js?v=63';
+import { reachInLockedTree, renderTree } from './tree.js?v=63';
+import { $, esc, toast } from './util.js?v=63';
+import { updateViewBtn } from './views.js?v=63';
 
 /* ============ Router ============ */
 const VIEWS={om:renderAbout,start:renderStart,trad:renderTree,solfjader:renderFan,personer:renderPersons,slaktskap:renderRel,personkort:renderCard,dubbletter:renderDups,tidslinje:renderTimeline,karta:renderMap,kallor:renderSources,import:renderImport};
