@@ -41,3 +41,24 @@ export function partnerFamily() {
   mk('AnnanBarn', 'M', 1985, { f: 'Annan', m: 'Sen' });
   return P;
 }
+
+/**
+ * Synthetic wide family (all fictional), shaped like a king with two wives: Stamfar has one child with
+ * Första and ten with Andra, and some of the children have children of their own.
+ */
+export function wideFamily() {
+  const P = [];
+  const mk = (id, sex, y, extra = {}) => { const p = { id, kind: 'person', given: id, surname: 'Fiktiv', sex, birthDate: String(y), fatherId: extra.f || '', motherId: extra.m || '', spouseIds: extra.sp || [] }; P.push(p); return p; };
+  mk('Stamfar', 'M', 1500, { sp: ['Första', 'Andra'] });
+  mk('Första', 'K', 1510, { sp: ['Stamfar'] }); mk('Andra', 'K', 1515, { sp: ['Stamfar'] });
+  mk('Förstbarn', 'M', 1533, { f: 'Stamfar', m: 'Första', sp: ['FörstbarnsMaka'] }); mk('FörstbarnsMaka', 'K', 1550, { sp: ['Förstbarn'] });
+  mk('Barnbarn1', 'K', 1566, { f: 'Förstbarn', m: 'FörstbarnsMaka' }); mk('Barnbarn2', 'M', 1568, { f: 'Förstbarn', m: 'FörstbarnsMaka' });
+  for (let i = 1; i <= 10; i++) mk('Andrabarn' + i, i % 2 ? 'M' : 'K', 1536 + i, { f: 'Stamfar', m: 'Andra' });
+  // a son with two wives and a child with each, and a daughter with one child
+  const s = P.find((p) => p.id === 'Andrabarn3'); s.spouseIds = ['Svärdotter1', 'Svärdotter2'];
+  mk('Svärdotter1', 'K', 1545, { sp: ['Andrabarn3'] }); mk('Svärdotter2', 'K', 1560, { sp: ['Andrabarn3'] });
+  mk('Sonson1', 'M', 1566, { f: 'Andrabarn3', m: 'Svärdotter1' }); mk('Sonson2', 'M', 1590, { f: 'Andrabarn3', m: 'Svärdotter2' });
+  const d = P.find((p) => p.id === 'Andrabarn6'); d.spouseIds = ['Svärson'];
+  mk('Svärson', 'M', 1540, { sp: ['Andrabarn6'] }); mk('Dotterdotter', 'K', 1570, { f: 'Svärson', m: 'Andrabarn6' });
+  return P;
+}

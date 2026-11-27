@@ -42,7 +42,7 @@ To import your own family, start from [`examples/slaktsagan-import-example.xlsx`
 
 ## Features
 
-- **Family tree:** ancestors and descendants around any person, up to 10 generations each way. Couples follow genealogical convention (man left, woman right), and cards stay put when you move between partners. *Lock* the tree to read around in it without it rebuilding; pick someone who is outside it (from search or a name in the panel) and the locked tree grows – more generations, wider side branches – until they are in it.
+- **Family tree:** ancestors and descendants around any person, up to 10 generations each way. Couples follow genealogical convention (man left, woman right), and cards stay put when you move between partners. Partners stand next to each other; a partner further out is joined by a low dashed bracket to the person's own card. Where a person has several families, or families' lines run side by side, each family has its own colour, and a click or tap on a family's lines lights up the parents and their children. *Lock* the tree to read around in it without it rebuilding; pick someone who is outside it (from search or a name in the panel) and the locked tree grows – more generations, wider side branches – until they are in it.
 - **Fan chart:** ancestors in a half circle, coloured by grandparent line, with completeness per generation.
 - **Person cards:** an automatically written life story ("…was born on 12 May 1496 at Rydboholm… married… died aged 64"), plus family, a vertical timeline with age at each event, photos and sources.
 - **Relationship calculator:** precise Swedish kinship terms (farbror, moster, brorsdotter, kusin, tremänning, halvkusin, svåger…) with the path drawn through the common ancestor.

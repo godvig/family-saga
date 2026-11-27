@@ -546,12 +546,23 @@ button.status:hover{background:rgba(127,110,80,.12)}
 .link.sp{stroke:#7a5a3e;stroke-width:2.4;stroke-dasharray:none}
 .link.sp.far{stroke-dasharray:5 4;opacity:.75}
 .link.dot{fill:#7a5a3e;stroke:var(--paper);stroke-width:1.5}
-.link.fam1{stroke:#8a5a2b}.link.dot.fam1{fill:#8a5a2b}
-.link.fam2{stroke:#3f7a6a}.link.dot.fam2{fill:#3f7a6a}
-.link.fam3{stroke:#5b6fa3}.link.dot.fam3{fill:#5b6fa3}
-.link.fam4{stroke:#9a4f6a}.link.dot.fam4{fill:#9a4f6a}
-.link.fam5{stroke:#7d7a2e}.link.dot.fam5{fill:#7d7a2e}
 [data-theme=dark] .link{stroke:#8d7b62}
+[data-theme=dark] .link.sp:not(.fam1,.fam2,.fam3,.fam4,.fam5){stroke:#b59a74}
+[data-theme=dark] .link.dot:not(.fam1,.fam2,.fam3,.fam4,.fam5){fill:#b59a74}
+/* One colour per family where a person has several, or where families' lines run side by side.
+   Each is at least 3:1 against the paper of its theme. */
+:root{--fam1:#8a5a2b;--fam2:#2f7a64;--fam3:#4a62a0;--fam4:#9a3f66;--fam5:#6b6a1e}
+[data-theme=dark]{--fam1:#d7a36b;--fam2:#6cc3a6;--fam3:#93a9e6;--fam4:#e08bb0;--fam5:#c9c66a}
+.link.fam1{stroke:var(--fam1)}.link.dot.fam1{fill:var(--fam1)}
+.link.fam2{stroke:var(--fam2)}.link.dot.fam2{fill:var(--fam2)}
+.link.fam3{stroke:var(--fam3)}.link.dot.fam3{fill:var(--fam3)}
+.link.fam4{stroke:var(--fam4)}.link.dot.fam4{fill:var(--fam4)}
+.link.fam5{stroke:var(--fam5)}.link.dot.fam5{fill:var(--fam5)}
+.link.dot.fam1,.link.dot.fam2,.link.dot.fam3,.link.dot.fam4,.link.dot.fam5{stroke:var(--paper)}
+.link.arc{stroke-width:2}
+/* a wider, invisible line on top of a family's lines, so a finger can hit it */
+#treeSvg .hit{fill:none;stroke:transparent;stroke-width:14;pointer-events:stroke;cursor:pointer}
+#treeSvg circle.hit{fill:transparent;stroke:none;pointer-events:all}
 .hlist{max-height:420px;overflow:auto;margin:6px 0}
 .hrow{display:flex;gap:12px;align-items:center;padding:10px 4px;border-top:1px solid var(--line)}
 .hrow.cur{background:var(--paper2);border-radius:8px}

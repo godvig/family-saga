@@ -20,7 +20,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 900 } }, testIgnore: '**/mobile.e2e.mjs' },
-    { name: 'phone', use: { ...devices['Pixel 7'] }, testMatch: ['**/mobile.e2e.mjs', '**/share-person.e2e.mjs'] },
+    { name: 'phone', use: { ...devices['Pixel 7'] }, testMatch: ['**/mobile.e2e.mjs', '**/share-person.e2e.mjs', '**/family-lines.e2e.mjs'] },
   ],
   webServer: { command: 'python3 -m http.server 8123', port: 8123, reuseExistingServer: !process.env.CI },
 });

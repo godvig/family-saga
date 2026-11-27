@@ -1,6 +1,6 @@
 import { test, expect, fresh } from './fixtures.mjs';
 import { family, partnerFamily } from './family.mjs';
-import { CW, crossings, layoutIn } from './lines.mjs';
+import { CW, CG, closeVerticals, crossings, jogs, layoutIn } from './lines.mjs';
 
 /* Classic tree with several partners (synthetic people only, see partnerFamily). */
 const fam = partnerFamily();
@@ -35,12 +35,16 @@ test('partners in a side branch and an ancestor\'s other partners follow the sam
   expect(crossings(L)).toEqual([]);
 });
 
-test('a lone child stands right below its parents\' dot, on one straight line', async ({ page }) => {
-  // under a couple among the descendants
+test('a lone child hangs from its parents\' dot without a short jog; partners stay one step apart', async ({ page }) => {
+  // under a couple among the descendants: the partners do not move apart to put the child below the dot;
+  // the child's line is straight or steps at least a third of a card to the side
   let L = await lay(page, 'Mannen');
   const dot = (x(L, 'Mannen') + x(L, 'Sen')) / 2;
-  expect(x(L, 'SenBarn')).toBe(dot);
+  expect(x(L, 'Sen') - x(L, 'Mannen')).toBe(CW + CG);
   expect(lineTo(L, 'SenBarn').s).toMatchObject({ x: dot, mid: true });
+  const off = Math.abs(x(L, 'SenBarn') - dot);
+  expect(off === 0 || off >= Math.round(CW / 3)).toBe(true);
+  expect(jogs(L)).toEqual([]); expect(closeVerticals(L)).toEqual([]);
   // the focus person when brothers and sisters are not shown, with partners pulling the parents' cards aside
   L = await lay(page, 'SenBarn', { kin: 0 });
   const up = L.links.find((l) => l.type === 'desc' && l.t.x === 0 && l.t.y === 0 && l.s.y < 0); // the focus card is drawn at 0, 0
@@ -83,9 +87,10 @@ test("the descendants are the person's own children: a partner's children with s
   expect(ids(L)).not.toContain('AnnanBarn');
   expect(crossings(L)).toEqual([]);
   L = await lay(page, 'TidigBarn1', { kin: 1 });
-  expect(ids(L)).toContain('SenBarn'); // a half-sister through the father, alone under his and Sen's dot
-  expect(lineTo(L, 'SenBarn').s).toMatchObject({ x: x(L, 'SenBarn'), mid: true });
-  expect(lineTo(L, 'SenBarn').s.x).toBe((x(L, 'Mannen') + x(L, 'Sen')) / 2);
+  expect(ids(L)).toContain('SenBarn'); // a half-sister through the father, alone, from his and Sen's dot
+  expect(lineTo(L, 'SenBarn').s).toMatchObject({ x: (x(L, 'Mannen') + x(L, 'Sen')) / 2, mid: true });
+  expect(Math.abs(x(L, 'Mannen') - x(L, 'Sen'))).toBe(CW + CG); // Sen stays next to Mannen; the line steps aside instead
+  expect(jogs(L)).toEqual([]); expect(closeVerticals(L)).toEqual([]);
   expect(ids(L)).not.toContain('AnnanBarn');
   expect(crossings(L)).toEqual([]);
 });

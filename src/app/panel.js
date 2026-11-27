@@ -1,17 +1,17 @@
 /* Släktsagan · panel.js — The side panel for a person: facts, family, events, sources, questions and voice memories. */
-import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=62';
-import { bindMedia, deletePerson, photoModal } from './media.js?v=62';
-import { confirmBox, modal, openPersonModal } from './modal.js?v=62';
-import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=62';
-import { backPerson, bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=62';
-import { Share, askName, callName, canSharePerson, sharePersonModal } from './share.js?v=62';
-import { logSection } from './research.js?v=62';
-import { linkModal } from './start.js?v=62';
-import { ALL, S, ui } from './state.js?v=62';
-import { Hist, Store } from './store.js?v=62';
-import { openCard } from './theme.js?v=62';
-import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=62';
-import { fillNames, hideModal } from './views.js?v=62';
+import { P, PIXEL, formerNamesText, resample, ageAt, avImg, avatarUrl, blobUrl, children, ensurePlace, fullHtml, fullName, homePerson, initials, isAudio, isImg, lifeEvents, lifespan, partners, personLabel, placeName, setHome, sexColor, shortName, siblings, storeBlob, thumbUrl } from './domain.js?v=63';
+import { bindMedia, deletePerson, photoModal } from './media.js?v=63';
+import { confirmBox, modal, openPersonModal } from './modal.js?v=63';
+import { bindPlacePanel, bindSourcePanel, placePanel, sourcePanel } from './places.js?v=63';
+import { backPerson, bindSheet, followPerson, renderAll, select, setFocus } from './router.js?v=63';
+import { Share, askName, callName, canSharePerson, sharePersonModal } from './share.js?v=63';
+import { logSection } from './research.js?v=63';
+import { linkModal } from './start.js?v=63';
+import { ALL, S, ui } from './state.js?v=63';
+import { Hist, Store } from './store.js?v=63';
+import { openCard } from './theme.js?v=63';
+import { $, EVENT_TYPES, SOURCE_TYPES, clone, esc, fmtDate, norm, toast, uid } from './util.js?v=63';
+import { fillNames, hideModal } from './views.js?v=63';
 
 /* ============ PANEL ============ */
 function renderPanel(){

@@ -1,13 +1,13 @@
 /* Släktsagan · print.js — Printing and PDF/PNG export. */
-import { storyOf } from './card.js?v=62';
-import { P, avatarMedia, avatarUrl, blobUrl, children, fullName, isAudio, lifeEvents, lifespan, partners, personLabel, placeName, siblings } from './domain.js?v=62';
-import { fmtDur } from './panel.js?v=62';
-import { ui } from './state.js?v=62';
-import { saveFile } from './importexport.js?v=62';
-import { modal } from './modal.js?v=62';
-import { S } from './state.js?v=62';
-import { applyTheme, cssv, themeName } from './theme.js?v=62';
-import { esc, fmtDate, toast, yearOf, localDay } from './util.js?v=62';
+import { storyOf } from './card.js?v=63';
+import { P, avatarMedia, avatarUrl, blobUrl, children, fullName, isAudio, lifeEvents, lifespan, partners, personLabel, placeName, siblings } from './domain.js?v=63';
+import { fmtDur } from './panel.js?v=63';
+import { ui } from './state.js?v=63';
+import { saveFile } from './importexport.js?v=63';
+import { modal } from './modal.js?v=63';
+import { S } from './state.js?v=63';
+import { applyTheme, cssv, themeName } from './theme.js?v=63';
+import { esc, fmtDate, toast, yearOf, localDay } from './util.js?v=63';
 
 /* ============ PRINT / PDF ============ */
 function loadJsPDF(){return new Promise((res,rej)=>{if(window.jspdf) return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.onload=res; s.onerror=()=>rej(new Error('Kunde inte ladda PDF-verktyget')); document.head.appendChild(s);});}
@@ -19,7 +19,7 @@ async function svgSnapshot(svgEl,title){
   const clone=svgEl.cloneNode(true);
   const o=[svgEl,...svgEl.querySelectorAll('*')], c=[clone,...clone.querySelectorAll('*')];
   o.forEach((el,i)=>{const cs=getComputedStyle(el); let st=''; for(const p of PROPS){const v=cs.getPropertyValue(p); if(v) st+=`${p}:${v};`;} st+='font-family:Helvetica,Arial,sans-serif;'; c[i].setAttribute('style',st); c[i].removeAttribute('class');});
-  o.forEach((el,i)=>{if(el.classList&&(el.classList.contains('ghost')||el.classList.contains('eye'))) c[i].setAttribute('data-drop','1');});
+  o.forEach((el,i)=>{if(el.classList&&(el.classList.contains('ghost')||el.classList.contains('eye')||el.classList.contains('hit'))) c[i].setAttribute('data-drop','1');});
   clone.querySelectorAll('[data-drop]').forEach(el=>el.remove());
   const paper=cssv('--paper'), ink=cssv('--ink'), ink3=cssv('--ink3');
   applyTheme(prev);
