@@ -19,7 +19,7 @@ async function svgSnapshot(svgEl,title){
   const clone=svgEl.cloneNode(true);
   const o=[svgEl,...svgEl.querySelectorAll('*')], c=[clone,...clone.querySelectorAll('*')];
   o.forEach((el,i)=>{const cs=getComputedStyle(el); let st=''; for(const p of PROPS){const v=cs.getPropertyValue(p); if(v) st+=`${p}:${v};`;} st+='font-family:Helvetica,Arial,sans-serif;'; c[i].setAttribute('style',st); c[i].removeAttribute('class');});
-  o.forEach((el,i)=>{if(el.classList&&(el.classList.contains('ghost')||el.classList.contains('eye'))) c[i].setAttribute('data-drop','1');});
+  o.forEach((el,i)=>{if(el.classList&&(el.classList.contains('ghost')||el.classList.contains('eye')||el.classList.contains('hit'))) c[i].setAttribute('data-drop','1');});
   clone.querySelectorAll('[data-drop]').forEach(el=>el.remove());
   const paper=cssv('--paper'), ink=cssv('--ink'), ink3=cssv('--ink3');
   applyTheme(prev);
